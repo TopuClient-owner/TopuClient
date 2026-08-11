@@ -1,0 +1,53 @@
+name: Build Topu Launcher EXE
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*' # Builds and publishes a GitHub Release when you push tags like v1.0.0
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    # Step 1: Checkout repository code
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # Step 2: Set up .NET 8 SDK
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    # Step 3: Restore NuGet dependencies
+    - name: Restore NuGet Packages
+      run: dotnet restore TopuLauncher.csproj
+
+    # Step 4: Build and Publish single-file EXE
+    - name: Publish Standalone Single-File EXE
+      run: |
+        dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+
+    # Step 5: Upload build artifact so you can download the EXE directly from GitHub Actions
+    - name: Upload Launcher Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: TopuLauncher-Win64
+        path: ./publish/TopuLauncher.exe
+
+    # Step 6: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
+    - name: Create Release and Attach EXE
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./publish/TopuLauncher.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
