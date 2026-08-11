@@ -1,0 +1,17 @@
+# Gradle build outputs
+.gradle/
+build/
+bin/
+
+# IDE configurations
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# Minecraft client logs and local run data
+run/
+run-server/
+run-client/
+*.log
