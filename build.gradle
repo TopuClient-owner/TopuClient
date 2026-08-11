@@ -1,0 +1,59 @@
+repositories {
+    mavenCentral()
+    maven { url = "https://maven.fabricmc.net/" }
+    
+    // Modrinth Maven Repository
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
+}
+
+dependencies {
+    // --- Core Minecraft & Loader ---
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+    // --- Core Libraries ---
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+
+    // =======================================================
+    // FABULOUSLY OPTIMIZED MOD SUITE (Direct Modrinth Imports)
+    // =======================================================
+
+    // 1. Core Performance Engine
+    modImplementation "maven.modrinth:sodium:${project.sodium_version}"
+    modImplementation "maven.modrinth:lithium:${project.lithium_version}"
+    modImplementation "maven.modrinth:ferrite-core:${project.ferritecore_version}"
+    modImplementation "maven.modrinth:immediatelyfast:1.2.18+1.21"
+    modImplementation "maven.modrinth:modernfix:5.19.0+mc1.21"
+    modImplementation "maven.modrinth:memoryleakfix:1.1.5"
+    modImplementation "maven.modrinth:krypton:0.2.8"
+    modImplementation "maven.modrinth:entityculling:1.6.6"
+    modImplementation "maven.modrinth:dynamic-fps:3.6.0"
+
+    // 2. OptiFine Features Parity (Shaders, Textures, Zoom)
+    modImplementation "maven.modrinth:iris:1.7.3+1.21"           // Custom Shaders
+    modImplementation "maven.modrinth:indium:1.0.34+mc1.21"       // Sodium Shader/Model Bridge
+    modImplementation "maven.modrinth:continuity:3.0.0-beta.5+1.21" // Connected Textures
+    modImplementation "maven.modrinth:entity-texture-features:6.2.3" // Custom Entity Textures
+    modImplementation "maven.modrinth:entity-model-features:2.2.3"   // Custom Entity Models
+    modImplementation "maven.modrinth:zoomify:2.14.0"            // OptiFine Zoom Replacement
+    modImplementation "maven.modrinth:capes:1.5.4"               // Custom/OptiFine Capes
+
+    // 3. Essential UI & Fixes
+    modImplementation "maven.modrinth:appleskin:${project.appleskin_version}"
+    modImplementation "maven.modrinth:cloth-config:15.0.127"
+    modImplementation "maven.modrinth:modmenu:11.0.1"
+    modImplementation "maven.modrinth:debugify:1.21+1.0"
+    modImplementation "maven.modrinth:borderless-mining:1.1.8+1.21"
+}
