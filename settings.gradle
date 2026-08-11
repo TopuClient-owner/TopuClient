@@ -1,12 +1,14 @@
 pluginManagement {
     repositories {
-        maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
+        maven { url = 'https://maven.fabricmc.net/' }
         mavenCentral()
         gradlePluginPortal()
     }
 }
 
-rootProject.name = 'custom-client'
+rootProject.name = 'multi-version-client'
+
+include 'v1_8_9'
+include 'v1_12_2'
+include 'v1_21_1'
+include 'v26_1_1'
