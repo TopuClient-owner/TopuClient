@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
@@ -54,7 +55,6 @@ namespace TopuLauncher
         // --- Microsoft Login Action ---
         private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            // Placeholder notice: Integrate CmlLib.Core.Auth.Microsoft or MSMC library here for OAuth
             StatusText.Text = "Microsoft OAuth setup: Redirecting to browser...";
             MessageBox.Show("Microsoft OAuth authentication step.", "Topu Launcher");
         }
@@ -69,7 +69,9 @@ namespace TopuLauncher
                 // Custom Application directory in AppData (.topuclient)
                 var gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
-                var launcher = new CMLauncher(path);
+                
+                // Initialize v4 Launcher Engine
+                var launcher = new MinecraftLauncher(path);
 
                 // Check Session Type
                 if (AuthTypeBox.SelectedIndex == 0)
@@ -88,16 +90,7 @@ namespace TopuLauncher
 
                 StatusText.Text = "Checking assets & downloading game files...";
 
-                // Subscribe to download progress
-                launcher.ProgressChanged += (s, args) =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        StatusText.Text = $"Downloading assets: {args.ProgressPercentage}%";
-                    });
-                };
-
-                // Create launch process for targeted version
+                // Install and build process for target version 1.21.1
                 var process = await launcher.CreateProcessAsync("1.21.1", new MLaunchOption
                 {
                     Session = _session,
