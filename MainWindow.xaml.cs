@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.Version;
 using CmlLib.Core.Installer.FabricMC;
 
 namespace TopuLauncher
@@ -183,9 +184,13 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
                 // --- 1. INSTALL FABRIC LOADER ---
+                StatusText.Text = $"Fetching Fabric Loader metadata for {targetVer}...";
+                var fabricVersionLoader = new FabricVersionLoader();
+                var fabricVersions = await fabricVersionLoader.GetVersionMetadatasAsync();
+                var fabricVersion = fabricVersions.GetVersionMetadata(targetVer);
+
                 StatusText.Text = $"Installing Fabric Loader for Minecraft {targetVer}...";
-                var fabricInstaller = new FabricInstaller();
-                string installedFabricVersion = await fabricInstaller.InstallVersionAsync(path, targetVer);
+                string installedFabricVersion = await fabricVersion.InstallAsync(path);
 
                 // --- 2. DOWNLOAD ESSENTIAL OPTIMIZATION MODS ---
                 StatusText.Text = "Ensuring performance mods exist...";
@@ -198,7 +203,7 @@ namespace TopuLauncher
                 StatusText.Text = "Downloading Minecraft assets & starting game...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
-                var launchOption = new MLaunchOptions
+                var launchOption = new MLaunchOption
                 {
                     Session = _session,
                     MaximumRamMb = allocatedRamMb
