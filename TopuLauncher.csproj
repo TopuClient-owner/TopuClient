@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <PackageReference Include="CmlLib.Core" Version="3.3.5" />
-    <PackageReference Include="CmlLib.Core.Installer.Fabric" Version="0.1.1" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
