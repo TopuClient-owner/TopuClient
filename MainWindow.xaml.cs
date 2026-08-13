@@ -18,6 +18,7 @@ namespace TopuLauncher
         private MSession? _session;
         private static readonly HttpClient _httpClient = new HttpClient
         {
+            // Modrinth REQUIRES a custom User-Agent, otherwise downloads fail with 403 Forbidden!
             DefaultRequestHeaders = { { "User-Agent", "TopuClient/1.0 (Windows NT 10.0; Win64; x64)" } }
         };
         private readonly string _configFilePath;
@@ -58,6 +59,10 @@ namespace TopuLauncher
             catch { }
         }
 
+        // ==========================================
+        // 1. WINDOW TITLE BAR CONTROLS
+        // ==========================================
+
         private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)
@@ -75,6 +80,10 @@ namespace TopuLauncher
         {
             Close();
         }
+
+        // ==========================================
+        // 2. NAVIGATION TAB SWITCHER
+        // ==========================================
 
         private void SwitchTab_Click(object sender, RoutedEventArgs e)
         {
@@ -114,6 +123,10 @@ namespace TopuLauncher
             }
         }
 
+        // ==========================================
+        // 3. PROFILES & RAM MANAGEMENT
+        // ==========================================
+
         private void RamSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (RamLabel != null)
@@ -130,6 +143,10 @@ namespace TopuLauncher
             
             MessageBox.Show("Profile settings saved successfully!", "Topu Client", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        // ==========================================
+        // 4. ACCOUNTS & CRACKED AUTH
+        // ==========================================
 
         private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -158,6 +175,10 @@ namespace TopuLauncher
             }
         }
 
+        // ==========================================
+        // 5. FABRIC + FPS BOOST LAUNCH ENGINE
+        // ==========================================
+
         private async void LaunchBtn_Click(object sender, RoutedEventArgs e)
         {
             LaunchBtn.IsEnabled = false;
@@ -169,24 +190,27 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
+                // --- 1. CRACKED AUTHENTICATION ---
                 string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 _session = MSession.GetOfflineSession(username);
                 SaveUsername(username);
 
-                StatusText.Text = "Downloading performance mods...";
+                StatusText.Text = $"Auth Mode: Playing as {username}";
+
+                // --- 2. ENSURE FABRIC API & FPS MODS ARE DOWNLOADED ---
                 string modsFolder = Path.Combine(gamePath, "mods");
+                StatusText.Text = "Downloading performance mods (Sodium, Lithium, FerriteCore)...";
                 await EnsureEssentialModsDownloaded(modsFolder);
 
-                StatusText.Text = $"Setting up Fabric for {targetVer}...";
+                // --- 3. FETCH FABRIC LOADER PROFILE ---
+                StatusText.Text = $"Installing Fabric Loader for Minecraft {targetVer}...";
                 string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
 
                 var launcher = new CMLauncher(path);
+                await launcher.GetAllVersionsAsync();
 
-                // Ensure Vanilla 1.21.1 base assets are downloaded FIRST so Fabric inherits correctly
-                StatusText.Text = $"Ensuring base Minecraft {targetVer} is installed...";
-                await launcher.CheckAndDownloadAsync(targetVer);
-
-                StatusText.Text = "Starting game process...";
+                // --- 4. LAUNCH GAME WITH RAM LIMIT ---
+                StatusText.Text = $"Downloading game assets & starting {fabricVersionName}...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOption
@@ -197,27 +221,14 @@ namespace TopuLauncher
                 };
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
-
-                // Read output/error to catch hidden Java crashes
-                process.StartInfo.RedirectStandardError = true;
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.UseShellExecute = false;
-
                 process.Start();
 
-                string errorOutput = await process.StandardError.ReadToEndAsync();
-                
-                if (!string.IsNullOrEmpty(errorOutput) && errorOutput.Contains("Exception"))
-                {
-                    MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-
-                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {username}!";
+                StatusText.Text = $"Topu Client ({fabricVersionName}) is running as {username}!";
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"Launch Error: {ex.Message}";
-                MessageBox.Show($"Failed to launch:\n\n{ex.ToString()}", "Topu Client Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to launch Fabric Minecraft:\n\n{ex.Message}", "Topu Client Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -234,8 +245,10 @@ namespace TopuLauncher
             if (!File.Exists(jsonFile))
             {
                 Directory.CreateDirectory(versionFolder);
+
                 string apiUrl = $"https://meta.fabricmc.net/v2/versions/loader/{mcVersion}/0.16.0/profile/json";
                 string jsonContent = await _httpClient.GetStringAsync(apiUrl);
+
                 await File.WriteAllTextAsync(jsonFile, jsonContent);
             }
 
@@ -246,6 +259,7 @@ namespace TopuLauncher
         {
             Directory.CreateDirectory(modsFolder);
 
+            // Verified 1.21.1 Fabric performance stack
             var coreMods = new (string Name, string Url)[]
             {
                 ("fabric-api.jar", "https://cdn.modrinth.com/data/P7R216yC/versions/zG4CqI6T/fabric-api-0.102.0%2B1.21.1.jar"),
@@ -270,7 +284,10 @@ namespace TopuLauncher
                             await File.WriteAllBytesAsync(destination, data);
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Mod download failed ({mod.Name}): {ex.Message}");
+                    }
                 }
             }
         }
