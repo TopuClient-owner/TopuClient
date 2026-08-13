@@ -138,6 +138,7 @@ namespace TopuLauncher
             {
                 var loginHandler = JELoginHandlerBuilder.BuildDefault();
 
+                // CmlLib v4 interactive login call without parameters
                 var session = await loginHandler.AuthenticateInteractively();
 
                 if (session != null && session.CheckIsValid())
