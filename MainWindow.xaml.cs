@@ -18,7 +18,6 @@ namespace TopuLauncher
     {
         private MSession? _session;
 
-        // Enabled AutoRedirect and added standard User-Agent for Modrinth CDN compatibility
         private static readonly HttpClient _httpClient = new HttpClient(new HttpClientHandler
         {
             AllowAutoRedirect = true
@@ -61,7 +60,10 @@ namespace TopuLauncher
         {
             try
             {
-                File.WriteAllText(_configFilePath, username);
+                if (!string.IsNullOrWhiteSpace(username))
+                {
+                    File.WriteAllText(_configFilePath, username);
+                }
             }
             catch { }
         }
@@ -159,12 +161,10 @@ namespace TopuLauncher
             {
                 StatusText.Text = "Initiating Microsoft Login...";
 
-                var loginHandler = new JELoginHandlerBuilder().Build();
-                var authenticator = loginHandler.CreateAuthenticatorWithDefaultTopLevelOption();
-                
-                var session = await authenticator.AuthenticateInteractively(new AbstractEnvirionment());
+                var loginHandler = new JELoginHandler();
+                var session = await loginHandler.Authenticate();
 
-                if (session != null && session.CheckIsValid())
+                if (session != null && session.CheckIsValid() && !string.IsNullOrEmpty(session.Username))
                 {
                     _session = session;
                     if (UsernameInput != null) UsernameInput.Text = _session.Username;
@@ -180,8 +180,8 @@ namespace TopuLauncher
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Authentication failed.";
-                MessageBox.Show($"Microsoft Auth Error:\n\n{ex.Message}\n\nYou can continue using Offline mode by selecting 'Offline' mode.", "Auth Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                StatusText.Text = "Microsoft auth requires CmlLib.Core.Auth.Microsoft package.";
+                MessageBox.Show($"Microsoft Login Note:\n\n{ex.Message}\n\nSwitching to Offline / Cracked mode.", "Auth Mode Notice", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -252,7 +252,7 @@ namespace TopuLauncher
                     MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
 
-                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
+                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session?.Username ?? inputUser}!";
             }
             catch (Exception ex)
             {
@@ -300,7 +300,6 @@ namespace TopuLauncher
             {
                 string destination = Path.Combine(modsFolder, mod.Name);
                 
-                // Redownload if file is missing or corrupted/incomplete (< 10 KB)
                 if (!File.Exists(destination) || new FileInfo(destination).Length < 10000)
                 {
                     try
