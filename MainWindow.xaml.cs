@@ -216,7 +216,7 @@ namespace TopuLauncher
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 // Configure MLaunchOption directly from CmlLib.Core
-                var launchOption = new MLaunchOption
+                var launchOption = new MLaunchOptions
                 {
                     Session = _session,
                     MaximumRamMb = allocatedRamMb
