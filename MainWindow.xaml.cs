@@ -9,7 +9,6 @@ using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Auth.Microsoft;
-using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
@@ -138,7 +137,6 @@ namespace TopuLauncher
             {
                 var loginHandler = JELoginHandlerBuilder.BuildDefault();
 
-                // CmlLib v4 interactive login call without parameters
                 var session = await loginHandler.AuthenticateInteractively();
 
                 if (session != null && session.CheckIsValid())
@@ -192,7 +190,6 @@ namespace TopuLauncher
                 string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
                 
-                // CmlLib v4 Launcher
                 var launcher = new MinecraftLauncher(path);
 
                 // Check active authentication mode
@@ -218,15 +215,15 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
-                // Configure launch options (CmlLib v4 syntax)
-                var launchOptions = new MinecraftLaunchOptions
+                // Configure MLaunchOption directly from CmlLib.Core
+                var launchOption = new MLaunchOption
                 {
                     Session = _session,
                     MaximumRamMb = allocatedRamMb
                 };
 
                 // Create and start process
-                var process = await launcher.CreateProcessAsync(targetVer, launchOptions);
+                var process = await launcher.CreateProcessAsync(targetVer, launchOption);
                 process.Start();
 
                 StatusText.Text = $"Topu Client is running ({targetVer})!";
