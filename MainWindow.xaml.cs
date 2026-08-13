@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
@@ -17,7 +16,10 @@ namespace TopuLauncher
     public partial class MainWindow : Window
     {
         private MSession? _session;
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private static readonly HttpClient _httpClient = new HttpClient
+        {
+            DefaultRequestHeaders = { { "User-Agent", "TopuClient/1.0 (Windows NT 10.0; Win64; x64)" } }
+        };
         private readonly string _configFilePath;
 
         public MainWindow()
@@ -28,7 +30,6 @@ namespace TopuLauncher
             Directory.CreateDirectory(appFolder);
             _configFilePath = Path.Combine(appFolder, "username.txt");
 
-            // Load saved username if exists
             LoadSavedUsername();
         }
 
@@ -45,10 +46,7 @@ namespace TopuLauncher
                     }
                 }
             }
-            catch
-            {
-                // Ignore config read failures
-            }
+            catch { }
         }
 
         private void SaveUsername(string username)
@@ -57,15 +55,8 @@ namespace TopuLauncher
             {
                 File.WriteAllText(_configFilePath, username);
             }
-            catch
-            {
-                // Ignore config write failures
-            }
+            catch { }
         }
-
-        // ==========================================
-        // 1. WINDOW TITLE BAR CONTROLS
-        // ==========================================
 
         private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -84,10 +75,6 @@ namespace TopuLauncher
         {
             Close();
         }
-
-        // ==========================================
-        // 2. NAVIGATION TAB SWITCHER
-        // ==========================================
 
         private void SwitchTab_Click(object sender, RoutedEventArgs e)
         {
@@ -127,10 +114,6 @@ namespace TopuLauncher
             }
         }
 
-        // ==========================================
-        // 3. PROFILES & MODS MANAGEMENT
-        // ==========================================
-
         private void RamSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (RamLabel != null)
@@ -148,10 +131,6 @@ namespace TopuLauncher
             MessageBox.Show("Profile settings saved successfully!", "Topu Client", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        // ==========================================
-        // 4. ACCOUNTS & CRACKED AUTHENTICATION
-        // ==========================================
-
         private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (StatusText == null) return;
@@ -168,30 +147,16 @@ namespace TopuLauncher
 
         private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(
-                "Microsoft Login requires browser authentication.\nFor now, test using Offline mode while launching!", 
-                "Topu Client Auth", 
-                MessageBoxButton.OK, 
-                MessageBoxImage.Information
-            );
+            MessageBox.Show("For now, test using Offline / Cracked mode!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
         }
-
-        // ==========================================
-        // 5. SERVER DIRECT JOIN
-        // ==========================================
 
         private void JoinServer_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string serverIp)
             {
                 StatusText.Text = $"Target server queued: {serverIp}";
-                MessageBox.Show($"Selected server: {serverIp}\nLaunch game to connect!", "Partnered Servers", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
-
-        // ==========================================
-        // 6. FABRIC GAME LAUNCH ENGINE
-        // ==========================================
 
         private async void LaunchBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -204,61 +169,55 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
-                // --- CRACKED / OFFLINE AUTHENTICATION SYSTEM ---
-                if (AuthTypeBox.SelectedIndex == 0)
-                {
-                    string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-                    
-                    // Create local cracked session
-                    _session = MSession.GetOfflineSession(username);
-                    SaveUsername(username);
+                string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
+                _session = MSession.GetOfflineSession(username);
+                SaveUsername(username);
 
-                    StatusText.Text = $"Cracked Auth active: Playing as {username}";
-                }
-                else
-                {
-                    if (_session == null || !_session.CheckIsValid())
-                    {
-                        StatusText.Text = "Please set an active session first!";
-                        MessageBox.Show("Please select Offline mode or sign in.", "Auth Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        LaunchBtn.IsEnabled = true;
-                        return;
-                    }
-                }
-
-                // --- 1. ENSURE MODS FOLDER & PERFORMANCE MODS ---
+                StatusText.Text = "Downloading performance mods...";
                 string modsFolder = Path.Combine(gamePath, "mods");
-                Directory.CreateDirectory(modsFolder);
-
-                StatusText.Text = "Ensuring optimization mods exist (Sodium, Iris, Lithium, FerriteCore)...";
                 await EnsureEssentialModsDownloaded(modsFolder);
 
-                // --- 2. INSTALL FABRIC PROFILE VIA META API ---
-                StatusText.Text = $"Fetching Fabric Loader for Minecraft {targetVer}...";
+                StatusText.Text = $"Setting up Fabric for {targetVer}...";
                 string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
 
                 var launcher = new CMLauncher(path);
-                await launcher.GetAllVersionsAsync();
 
-                // --- 3. LAUNCH GAME ---
-                StatusText.Text = $"Downloading assets and starting {fabricVersionName}...";
+                // Ensure Vanilla 1.21.1 base assets are downloaded FIRST so Fabric inherits correctly
+                StatusText.Text = $"Ensuring base Minecraft {targetVer} is installed...";
+                await launcher.CheckAndDownloadAsync(targetVer);
+
+                StatusText.Text = "Starting game process...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOption
                 {
                     Session = _session,
-                    MaximumRamMb = allocatedRamMb
+                    MaximumRamMb = allocatedRamMb,
+                    IsDemo = false
                 };
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
+
+                // Read output/error to catch hidden Java crashes
+                process.StartInfo.RedirectStandardError = true;
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.UseShellExecute = false;
+
                 process.Start();
 
-                StatusText.Text = $"Topu Client ({fabricVersionName}) is running as {_session.Username}!";
+                string errorOutput = await process.StandardError.ReadToEndAsync();
+                
+                if (!string.IsNullOrEmpty(errorOutput) && errorOutput.Contains("Exception"))
+                {
+                    MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {username}!";
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"Launch Error: {ex.Message}";
-                MessageBox.Show($"Failed to launch Fabric Minecraft:\n{ex.Message}", "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to launch:\n\n{ex.ToString()}", "Topu Client Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -275,10 +234,8 @@ namespace TopuLauncher
             if (!File.Exists(jsonFile))
             {
                 Directory.CreateDirectory(versionFolder);
-
                 string apiUrl = $"https://meta.fabricmc.net/v2/versions/loader/{mcVersion}/0.16.0/profile/json";
                 string jsonContent = await _httpClient.GetStringAsync(apiUrl);
-
                 await File.WriteAllTextAsync(jsonFile, jsonContent);
             }
 
@@ -287,28 +244,33 @@ namespace TopuLauncher
 
         private async Task EnsureEssentialModsDownloaded(string modsFolder)
         {
+            Directory.CreateDirectory(modsFolder);
+
             var coreMods = new (string Name, string Url)[]
             {
+                ("fabric-api.jar", "https://cdn.modrinth.com/data/P7R216yC/versions/zG4CqI6T/fabric-api-0.102.0%2B1.21.1.jar"),
                 ("sodium.jar", "https://cdn.modrinth.com/data/AANAdA4C/versions/zG94D8J5/sodium-fabric-0.5.11%2Bmc1.21.1.jar"),
-                ("iris.jar", "https://cdn.modrinth.com/data/YLSE12W8/versions/J58PAnS6/iris-1.7.3%2B1.21.1-fabric.jar"),
                 ("lithium.jar", "https://cdn.modrinth.com/data/gvQqBU10/versions/K3Kz5TjZ/lithium-fabric-0.13.0%2Bmc1.21.1.jar"),
-                ("ferritecore.jar", "https://cdn.modrinth.com/data/u62m2qw5/versions/4U7N10wz/ferritecore-7.0.0-fabric.jar")
+                ("ferritecore.jar", "https://cdn.modrinth.com/data/u62m2qw5/versions/4U7N10wz/ferritecore-7.0.0-fabric.jar"),
+                ("sodium-extra.jar", "https://cdn.modrinth.com/data/1eAoo2A1/versions/0.5.7%2Bmc1.21.1/sodium-extra-0.5.7%2Bmc1.21.1.jar"),
+                ("dynamic-fps.jar", "https://cdn.modrinth.com/data/10000001/versions/3.6.3%2B1.21.1/dynamic_fps-3.6.3%2B1.21.1-fabric.jar")
             };
 
             foreach (var mod in coreMods)
             {
                 string destination = Path.Combine(modsFolder, mod.Name);
-                if (!File.Exists(destination))
+                if (!File.Exists(destination) || new FileInfo(destination).Length == 0)
                 {
                     try
                     {
-                        byte[] data = await _httpClient.GetByteArrayAsync(mod.Url);
-                        await File.WriteAllBytesAsync(destination, data);
+                        using (var response = await _httpClient.GetAsync(mod.Url, HttpCompletionOption.ResponseHeadersRead))
+                        {
+                            response.EnsureSuccessStatusCode();
+                            byte[] data = await response.Content.ReadAsByteArrayAsync();
+                            await File.WriteAllBytesAsync(destination, data);
+                        }
                     }
-                    catch
-                    {
-                        // Ignore individual download failures
-                    }
+                    catch { }
                 }
             }
         }
