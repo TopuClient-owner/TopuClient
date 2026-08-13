@@ -80,7 +80,7 @@ namespace TopuLauncher
         // --- Auth Mode Switcher ---
         private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Dropdown selection handled during launch logic
+            // Handled during launch execution
         }
 
         private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
