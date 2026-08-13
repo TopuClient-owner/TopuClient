@@ -46,7 +46,7 @@ jobs:
     - name: Create Release and Attach EXE
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
-      with:
+      with
         files: ./publish/TopuLauncher.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
