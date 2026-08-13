@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,7 +11,6 @@ using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Version;
-using CmlLib.Core.Installer.FabricMC;
 
 namespace TopuLauncher
 {
@@ -18,10 +18,49 @@ namespace TopuLauncher
     {
         private MSession? _session;
         private static readonly HttpClient _httpClient = new HttpClient();
+        private readonly string _configFilePath;
 
         public MainWindow()
         {
             InitializeComponent();
+
+            string appFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
+            Directory.CreateDirectory(appFolder);
+            _configFilePath = Path.Combine(appFolder, "username.txt");
+
+            // Load saved username if exists
+            LoadSavedUsername();
+        }
+
+        private void LoadSavedUsername()
+        {
+            try
+            {
+                if (File.Exists(_configFilePath))
+                {
+                    string savedUser = File.ReadAllText(_configFilePath).Trim();
+                    if (!string.IsNullOrEmpty(savedUser) && UsernameInput != null)
+                    {
+                        UsernameInput.Text = savedUser;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore config read failures
+            }
+        }
+
+        private void SaveUsername(string username)
+        {
+            try
+            {
+                File.WriteAllText(_configFilePath, username);
+            }
+            catch
+            {
+                // Ignore config write failures
+            }
         }
 
         // ==========================================
@@ -103,14 +142,14 @@ namespace TopuLauncher
         private void SaveProfile_Click(object sender, RoutedEventArgs e)
         {
             string selectedVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
-            SelectedProfileLabel.Text = $"Ready to launch Minecraft {selectedVer}";
-            StatusText.Text = $"Profile set to Fabric {selectedVer} with {(int)RamSlider.Value}GB RAM";
+            SelectedProfileLabel.Text = $"Ready to launch Fabric {selectedVer}";
+            StatusText.Text = $"Profile saved: Fabric {selectedVer} with {(int)RamSlider.Value}GB RAM";
             
             MessageBox.Show("Profile settings saved successfully!", "Topu Client", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         // ==========================================
-        // 4. ACCOUNTS & AUTHENTICATION
+        // 4. ACCOUNTS & CRACKED AUTHENTICATION
         // ==========================================
 
         private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -151,7 +190,7 @@ namespace TopuLauncher
         }
 
         // ==========================================
-        // 6. FABRIC & GAME LAUNCH ENGINE
+        // 6. FABRIC GAME LAUNCH ENGINE
         // ==========================================
 
         private async void LaunchBtn_Click(object sender, RoutedEventArgs e)
@@ -162,13 +201,19 @@ namespace TopuLauncher
             {
                 string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
-                var launcher = new CMLauncher(path);
+                
+                string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
-                // Setup Session
+                // --- CRACKED / OFFLINE AUTHENTICATION SYSTEM ---
                 if (AuthTypeBox.SelectedIndex == 0)
                 {
                     string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
+                    
+                    // Create local cracked session
                     _session = MSession.GetOfflineSession(username);
+                    SaveUsername(username);
+
+                    StatusText.Text = $"Cracked Auth active: Playing as {username}";
                 }
                 else
                 {
@@ -181,26 +226,22 @@ namespace TopuLauncher
                     }
                 }
 
-                string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
-
-                // --- 1. INSTALL FABRIC LOADER ---
-                StatusText.Text = $"Fetching Fabric Loader metadata for {targetVer}...";
-                var fabricVersionLoader = new FabricVersionLoader();
-                var fabricVersions = await fabricVersionLoader.GetVersionMetadatasAsync();
-                var fabricVersion = fabricVersions.GetVersionMetadata(targetVer);
-
-                StatusText.Text = $"Installing Fabric Loader for Minecraft {targetVer}...";
-                string installedFabricVersion = await fabricVersion.InstallAsync(path);
-
-                // --- 2. DOWNLOAD ESSENTIAL OPTIMIZATION MODS ---
-                StatusText.Text = "Ensuring performance mods exist...";
+                // --- 1. ENSURE MODS FOLDER & PERFORMANCE MODS ---
                 string modsFolder = Path.Combine(gamePath, "mods");
                 Directory.CreateDirectory(modsFolder);
 
+                StatusText.Text = "Ensuring optimization mods exist (Sodium, Iris, Lithium, FerriteCore)...";
                 await EnsureEssentialModsDownloaded(modsFolder);
 
+                // --- 2. INSTALL FABRIC PROFILE VIA META API ---
+                StatusText.Text = $"Fetching Fabric Loader for Minecraft {targetVer}...";
+                string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
+
+                var launcher = new CMLauncher(path);
+                await launcher.GetAllVersionsAsync();
+
                 // --- 3. LAUNCH GAME ---
-                StatusText.Text = "Downloading Minecraft assets & starting game...";
+                StatusText.Text = $"Downloading assets and starting {fabricVersionName}...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOption
@@ -209,15 +250,15 @@ namespace TopuLauncher
                     MaximumRamMb = allocatedRamMb
                 };
 
-                var process = await launcher.CreateProcessAsync(installedFabricVersion, launchOption);
+                var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
                 process.Start();
 
-                StatusText.Text = $"Topu Client (Fabric {targetVer}) is running!";
+                StatusText.Text = $"Topu Client ({fabricVersionName}) is running as {_session.Username}!";
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"Launch Error: {ex.Message}";
-                MessageBox.Show($"Failed to launch Minecraft:\n{ex.Message}", "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to launch Fabric Minecraft:\n{ex.Message}", "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -225,9 +266,27 @@ namespace TopuLauncher
             }
         }
 
+        private async Task<string> InstallFabricProfileAsync(string gamePath, string mcVersion)
+        {
+            string fabricVersionId = $"fabric-loader-0.16.0-{mcVersion}";
+            string versionFolder = Path.Combine(gamePath, "versions", fabricVersionId);
+            string jsonFile = Path.Combine(versionFolder, $"{fabricVersionId}.json");
+
+            if (!File.Exists(jsonFile))
+            {
+                Directory.CreateDirectory(versionFolder);
+
+                string apiUrl = $"https://meta.fabricmc.net/v2/versions/loader/{mcVersion}/0.16.0/profile/json";
+                string jsonContent = await _httpClient.GetStringAsync(apiUrl);
+
+                await File.WriteAllTextAsync(jsonFile, jsonContent);
+            }
+
+            return fabricVersionId;
+        }
+
         private async Task EnsureEssentialModsDownloaded(string modsFolder)
         {
-            // Direct CDN URLs for core optimization mods (1.21.1 Fabric)
             var coreMods = new (string Name, string Url)[]
             {
                 ("sodium.jar", "https://cdn.modrinth.com/data/AANAdA4C/versions/zG94D8J5/sodium-fabric-0.5.11%2Bmc1.21.1.jar"),
@@ -248,7 +307,7 @@ namespace TopuLauncher
                     }
                     catch
                     {
-                        // Ignore individual mod download failures to prevent crash
+                        // Ignore individual download failures
                     }
                 }
             }
