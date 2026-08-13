@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.Auth.Microsoft;
 using CmlLib.Core.Version;
 
 namespace TopuLauncher
@@ -16,10 +17,16 @@ namespace TopuLauncher
     public partial class MainWindow : Window
     {
         private MSession? _session;
-        private static readonly HttpClient _httpClient = new HttpClient
+
+        // Enabled AutoRedirect and added standard User-Agent for Modrinth CDN compatibility
+        private static readonly HttpClient _httpClient = new HttpClient(new HttpClientHandler
         {
-            DefaultRequestHeaders = { { "User-Agent", "TopuClient/1.0 (Windows NT 10.0; Win64; x64)" } }
+            AllowAutoRedirect = true
+        })
+        {
+            DefaultRequestHeaders = { { "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopuClient/1.0" } }
         };
+
         private readonly string _configFilePath;
 
         public MainWindow()
@@ -40,9 +47,10 @@ namespace TopuLauncher
                 if (File.Exists(_configFilePath))
                 {
                     string savedUser = File.ReadAllText(_configFilePath).Trim();
-                    if (!string.IsNullOrEmpty(savedUser) && UsernameInput != null)
+                    if (!string.IsNullOrEmpty(savedUser))
                     {
-                        UsernameInput.Text = savedUser;
+                        if (UsernameInput != null) UsernameInput.Text = savedUser;
+                        _session = MSession.GetOfflineSession(savedUser);
                     }
                 }
             }
@@ -145,9 +153,36 @@ namespace TopuLauncher
             }
         }
 
-        private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
+        private async void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("For now, test using Offline / Cracked mode!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                StatusText.Text = "Initiating Microsoft Login...";
+
+                var loginHandler = new JELoginHandlerBuilder().Build();
+                var authenticator = loginHandler.CreateAuthenticatorWithDefaultTopLevelOption();
+                
+                var session = await authenticator.AuthenticateInteractively(new AbstractEnvirionment());
+
+                if (session != null && session.CheckIsValid())
+                {
+                    _session = session;
+                    if (UsernameInput != null) UsernameInput.Text = _session.Username;
+                    SaveUsername(_session.Username);
+                    
+                    StatusText.Text = $"Logged in as Microsoft Account: {_session.Username}";
+                    MessageBox.Show($"Successfully logged in as {_session.Username}!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Microsoft Login failed or cancelled.";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Authentication failed.";
+                MessageBox.Show($"Microsoft Auth Error:\n\n{ex.Message}\n\nYou can continue using Offline mode by selecting 'Offline' mode.", "Auth Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private void JoinServer_Click(object sender, RoutedEventArgs e)
@@ -169,11 +204,15 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
-                string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-                _session = MSession.GetOfflineSession(username);
-                SaveUsername(username);
+                bool isOffline = AuthTypeBox == null || AuthTypeBox.SelectedIndex == 0;
+                string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
 
-                StatusText.Text = "Downloading performance mods...";
+                if (isOffline || _session == null || !_session.CheckIsValid())
+                {
+                    _session = MSession.GetOfflineSession(inputUser);
+                    SaveUsername(inputUser);
+                }
+
                 string modsFolder = Path.Combine(gamePath, "mods");
                 await EnsureEssentialModsDownloaded(modsFolder);
 
@@ -182,7 +221,6 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                // Fetch full MVersion object cleanly
                 StatusText.Text = $"Ensuring base Minecraft {targetVer} is installed...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
@@ -214,7 +252,7 @@ namespace TopuLauncher
                     MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
 
-                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {username}!";
+                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
             }
             catch (Exception ex)
             {
@@ -261,18 +299,29 @@ namespace TopuLauncher
             foreach (var mod in coreMods)
             {
                 string destination = Path.Combine(modsFolder, mod.Name);
-                if (!File.Exists(destination) || new FileInfo(destination).Length == 0)
+                
+                // Redownload if file is missing or corrupted/incomplete (< 10 KB)
+                if (!File.Exists(destination) || new FileInfo(destination).Length < 10000)
                 {
                     try
                     {
+                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading mod: {mod.Name}...");
+
                         using (var response = await _httpClient.GetAsync(mod.Url, HttpCompletionOption.ResponseHeadersRead))
                         {
                             response.EnsureSuccessStatusCode();
-                            byte[] data = await response.Content.ReadAsByteArrayAsync();
-                            await File.WriteAllBytesAsync(destination, data);
+
+                            using (var inputStream = await response.Content.ReadAsStreamAsync())
+                            using (var outputStream = File.Create(destination))
+                            {
+                                await inputStream.CopyToAsync(outputStream);
+                            }
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Failed to download {mod.Name}: {ex.Message}");
+                    }
                 }
             }
         }
