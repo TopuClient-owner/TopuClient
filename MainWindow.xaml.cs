@@ -1,5 +1,4 @@
 using System;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,28 +35,66 @@ namespace TopuLauncher
             Close();
         }
 
-        // --- Auth Mode Switcher (Cracked vs Microsoft) ---
-        private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        // --- Navigation Tab Switcher ---
+        private void SwitchTab_Click(object sender, RoutedEventArgs e)
         {
-            if (CrackedPanel == null || PremiumPanel == null) return;
+            if (sender is Button btn && btn.Tag is string targetTab)
+            {
+                // Hide all tabs
+                TabLaunch.Visibility = Visibility.Collapsed;
+                TabProfiles.Visibility = Visibility.Collapsed;
+                TabAccounts.Visibility = Visibility.Collapsed;
 
-            if (AuthTypeBox.SelectedIndex == 0) // Cracked
-            {
-                CrackedPanel.Visibility = Visibility.Visible;
-                PremiumPanel.Visibility = Visibility.Collapsed;
-            }
-            else // Microsoft Premium
-            {
-                CrackedPanel.Visibility = Visibility.Collapsed;
-                PremiumPanel.Visibility = Visibility.Visible;
+                // Reset button text colors
+                TabLaunchBtn.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+                TabLaunchBtn.BorderThickness = new Thickness(0);
+                TabProfilesBtn.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+                TabProfilesBtn.BorderThickness = new Thickness(0);
+                TabAccountsBtn.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+                TabAccountsBtn.BorderThickness = new Thickness(0);
+
+                // Highlight active button
+                btn.Foreground = new SolidColorBrush(Color.FromRgb(0, 255, 136));
+                btn.BorderThickness = new Thickness(0, 0, 0, 2);
+
+                // Display selected tab
+                if (targetTab == "TabLaunch") TabLaunch.Visibility = Visibility.Visible;
+                if (targetTab == "TabProfiles") TabProfiles.Visibility = Visibility.Visible;
+                if (targetTab == "TabAccounts") TabAccounts.Visibility = Visibility.Visible;
             }
         }
 
-        // --- Microsoft Login Action ---
+        // --- Profiles Management ---
+        private void RamSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (RamLabel != null) RamLabel.Text = $"{(int)e.NewValue}GB";
+        }
+
+        private void SaveProfile_Click(object sender, RoutedEventArgs e)
+        {
+            string selectedVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
+            SelectedProfileLabel.Text = $"Ready to launch Minecraft {selectedVer}";
+            MessageBox.Show("Profile settings saved successfully!", "Topu Launcher");
+        }
+
+        // --- Auth Mode Switcher ---
+        private void AuthTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Dropdown selection handled during launch logic
+        }
+
         private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "Microsoft OAuth setup: Redirecting to browser...";
-            MessageBox.Show("Microsoft OAuth authentication step.", "Topu Launcher");
+            MessageBox.Show("Microsoft OAuth authentication flow initiated.", "Topu Auth");
+        }
+
+        // --- Server Direct Join ---
+        private void JoinServer_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string serverIp)
+            {
+                StatusText.Text = $"Connecting to {serverIp}...";
+            }
         }
 
         // --- Game Launch Process Engine ---
@@ -67,19 +104,17 @@ namespace TopuLauncher
 
             try
             {
-                // Custom Application directory in AppData (.topuclient)
                 var gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
                 
-                // Initialize v4 Launcher Engine
-                var launcher = new MinecraftLauncher(path);
+                // Initialize CmlLib v3.3.5 Launcher Engine
+                var launcher = new CMLauncher(path);
 
-                // Check Session Type
-                if (AuthTypeBox.SelectedIndex == 0)
+                // Determine session
+                if (AuthTypeBox.SelectedIndex == 0) // Offline / Cracked
                 {
-                    // Generate Offline / Cracked Session
                     string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text;
-                    _session = MSession.CreateOfflineSession(username);
+                    _session = MSession.GetOfflineSession(username);
                 }
                 else if (_session == null)
                 {
@@ -91,11 +126,13 @@ namespace TopuLauncher
 
                 StatusText.Text = "Checking assets & downloading game files...";
 
-                // Install and build process for target version 1.21.1
-                var process = await launcher.CreateProcessAsync("1.21.1", new MLaunchOption
+                string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
+                int allocatedRam = (int)RamSlider.Value * 1024;
+
+                var process = await launcher.CreateProcessAsync(targetVer, new MLaunchOption
                 {
                     Session = _session,
-                    MaximumRamMb = 4096 // Allocates 4GB RAM to game process
+                    MaximumRamMb = allocatedRam
                 });
 
                 process.Start();
