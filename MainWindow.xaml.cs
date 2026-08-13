@@ -9,7 +9,7 @@ using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Auth.Microsoft;
-using XboxAuthNet.Game.OAuth;
+using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
@@ -138,36 +138,13 @@ namespace TopuLauncher
             {
                 var loginHandler = JELoginHandlerBuilder.BuildDefault();
 
-                var session = await loginHandler.AuthenticateInteractively(deviceCode =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        StatusText.Text = $"Code: {deviceCode.UserCode} | Enter code in browser...";
-                        
-                        MessageBox.Show(
-                            $"Your Microsoft Auth Code: {deviceCode.UserCode}\n\n" +
-                            $"A browser tab opened to {deviceCode.VerificationUrl}.\n" +
-                            $"Paste the code there to complete sign in.",
-                            "Topu Client - Microsoft Login",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Information
-                        );
-                    });
-
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = deviceCode.VerificationUrl,
-                        UseShellExecute = true
-                    });
-
-                    return Task.CompletedTask;
-                });
+                var session = await loginHandler.AuthenticateInteractively();
 
                 if (session != null && session.CheckIsValid())
                 {
                     _session = session;
                     MsAccountName.Text = session.Username;
-                    AuthTypeBox.SelectedIndex = 1; // Auto-switch dropdown to Microsoft
+                    AuthTypeBox.SelectedIndex = 1; // Switch dropdown to Microsoft
                     StatusText.Text = $"Signed in as {session.Username}";
                     MessageBox.Show($"Successfully authenticated as {session.Username}!", "Topu Client", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -213,13 +190,15 @@ namespace TopuLauncher
                 // Custom Topu Client game directory (.topuclient in AppData)
                 string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
-                var launcher = new CMLauncher(path);
+                
+                // CmlLib v4 Launcher
+                var launcher = new MinecraftLauncher(path);
 
                 // Check active authentication mode
                 if (AuthTypeBox.SelectedIndex == 0) // Offline / Cracked
                 {
                     string username = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-                    _session = MSession.GetOfflineSession(username);
+                    _session = MSession.CreateOfflineSession(username);
                 }
                 else // Microsoft Account
                 {
@@ -238,14 +217,14 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
-                // Configure launch parameters
-                var launchOptions = new MLaunchOption
+                // Configure launch options (CmlLib v4 syntax)
+                var launchOptions = new MinecraftLaunchOptions
                 {
                     Session = _session,
                     MaximumRamMb = allocatedRamMb
                 };
 
-                // Create and launch Minecraft process
+                // Create and start process
                 var process = await launcher.CreateProcessAsync(targetVer, launchOptions);
                 process.Start();
 
