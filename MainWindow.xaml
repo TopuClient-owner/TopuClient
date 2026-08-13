@@ -225,7 +225,8 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <Button Grid.Row="2" Content="Add Account" Click="MsLoginBtn_Click" Background="#00FF88" Foreground="Black" FontWeight="Bold" Height="40" BorderThickness="0" Cursor="Hand"/>
+                        <!-- x:Name="MsLoginBtn" assigned here -->
+                        <Button x:Name="MsLoginBtn" Grid.Row="2" Content="Add Account" Click="MsLoginBtn_Click" Background="#00FF88" Foreground="Black" FontWeight="Bold" Height="40" BorderThickness="0" Cursor="Hand"/>
                     </Grid>
                 </Border>
             </Grid>
