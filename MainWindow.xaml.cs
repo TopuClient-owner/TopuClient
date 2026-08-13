@@ -10,7 +10,6 @@ using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Installer.FabricMC;
-using CmlLib.Core.Java;
 
 namespace TopuLauncher
 {
@@ -151,7 +150,7 @@ namespace TopuLauncher
         }
 
         // ==========================================
-        // 6. FABRIC & JAVA GAME LAUNCH ENGINE
+        // 6. FABRIC & GAME LAUNCH ENGINE
         // ==========================================
 
         private async void LaunchBtn_Click(object sender, RoutedEventArgs e)
@@ -183,36 +182,26 @@ namespace TopuLauncher
 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
-                // --- 1. INSTALL JAVA RUNTIME IF MISSING ---
-                StatusText.Text = "Checking Java Runtime environment...";
-                var javaInstaller = new MJava(path);
-                var javaPath = await javaInstaller.CheckAndDownloadJavaAsync(targetVer);
-
-                // --- 2. INSTALL FABRIC LOADER ---
+                // --- 1. INSTALL FABRIC LOADER ---
                 StatusText.Text = $"Installing Fabric Loader for Minecraft {targetVer}...";
-                var fabricInstaller = new FabricVersionLoader();
-                var fabricVersions = await fabricInstaller.GetVersionMetadatasAsync();
-                
-                // Select latest Fabric version for target MC version
-                var fabricVersion = fabricVersions.GetVersionMetadata(targetVer);
-                string installedFabricVersion = await fabricVersion.InstallAsync(path);
+                var fabricInstaller = new FabricInstaller();
+                string installedFabricVersion = await fabricInstaller.InstallVersionAsync(path, targetVer);
 
-                // --- 3. DOWNLOAD FABULOUSLY OPTIMIZED MODS ---
-                StatusText.Text = "Ensuring Fabulously Optimized mods exist...";
+                // --- 2. DOWNLOAD ESSENTIAL OPTIMIZATION MODS ---
+                StatusText.Text = "Ensuring performance mods exist...";
                 string modsFolder = Path.Combine(gamePath, "mods");
                 Directory.CreateDirectory(modsFolder);
 
                 await EnsureEssentialModsDownloaded(modsFolder);
 
-                // --- 4. LAUNCH GAME ---
-                StatusText.Text = "Downloading Minecraft assets & starting Fabric...";
+                // --- 3. LAUNCH GAME ---
+                StatusText.Text = "Downloading Minecraft assets & starting game...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOptions
                 {
                     Session = _session,
-                    MaximumRamMb = allocatedRamMb,
-                    JavaPath = javaPath
+                    MaximumRamMb = allocatedRamMb
                 };
 
                 var process = await launcher.CreateProcessAsync(installedFabricVersion, launchOption);
@@ -233,7 +222,7 @@ namespace TopuLauncher
 
         private async Task EnsureEssentialModsDownloaded(string modsFolder)
         {
-            // Direct Modrinth CDN URLs for core optimization mods (1.21.1 Fabric)
+            // Direct CDN URLs for core optimization mods (1.21.1 Fabric)
             var coreMods = new (string Name, string Url)[]
             {
                 ("sodium.jar", "https://cdn.modrinth.com/data/AANAdA4C/versions/zG94D8J5/sodium-fabric-0.5.11%2Bmc1.21.1.jar"),
