@@ -182,10 +182,9 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                // Fetch version metadata cleanly
+                // Fetch full MVersion object cleanly
                 StatusText.Text = $"Ensuring base Minecraft {targetVer} is installed...";
-                var versions = await launcher.GetAllVersionsAsync();
-                var vanillaVersion = versions.GetVersionMetadata(targetVer);
+                var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
                     await launcher.CheckAndDownloadAsync(vanillaVersion);
