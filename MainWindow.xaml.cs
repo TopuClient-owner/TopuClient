@@ -49,7 +49,6 @@ namespace TopuLauncher
                     {
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
                         
-                        // Generate a valid offline UUID for the saved username
                         string offlineUuid = Guid.NewGuid().ToString("N");
                         _session = new MSession(savedUser, offlineUuid, "offline_token");
                     }
@@ -281,6 +280,17 @@ namespace TopuLauncher
                 string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
 
                 var launcher = new CMLauncher(path);
+
+                // Added event handlers so you can see live progress instead of looking frozen!
+                launcher.FileProgressChanged += (e) =>
+                {
+                    Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.FileName} ({e.ProgressPercentage}%)");
+                };
+
+                launcher.GameFileChanged += (e) =>
+                {
+                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.Name} ({e.Kind})");
+                };
 
                 StatusText.Text = $"Checking Minecraft {targetVer} files & Java Runtime...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
