@@ -134,9 +134,9 @@ namespace TopuLauncher
 
         private void SaveProfile_Click(object sender, RoutedEventArgs e)
         {
-            string selectedVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
-            SelectedProfileLabel.Text = $"Ready to launch Fabric {selectedVer}";
-            StatusText.Text = $"Profile saved: Fabric {selectedVer} with {(int)RamSlider.Value}GB RAM";
+            string selectedVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
+            if (SelectedProfileLabel != null) SelectedProfileLabel.Text = $"Ready to launch Fabric {selectedVer}";
+            if (StatusText != null) StatusText.Text = $"Profile saved: Fabric {selectedVer} with {(int)RamSlider.Value}GB RAM";
             
             MessageBox.Show("Profile settings saved successfully!", "Topu Client", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -171,7 +171,7 @@ namespace TopuLauncher
 
         private async void SearchModrinth_Click(object sender, RoutedEventArgs e)
         {
-            string query = ModSearchInput?.Text?.Trim();
+            string query = ModSearchInput?.Text?.Trim() ?? "";
             if (string.IsNullOrEmpty(query))
             {
                 MessageBox.Show("Please enter a mod name to search on Modrinth.", "Mod Search", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -180,8 +180,7 @@ namespace TopuLauncher
 
             try
             {
-                ModSearchStatus.Text = $"Searching Modrinth for '{query}'...";
-                string searchUrl = $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}&facets=%%5B%5B%22project_type%3Amod%22%5D%5D";
+                if (ModSearchStatus != null) ModSearchStatus.Text = $"Searching Modrinth for '{query}'...";
                 
                 string responseString = await _httpClient.GetStringAsync($"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}");
                 using var doc = JsonDocument.Parse(responseString);
@@ -193,9 +192,8 @@ namespace TopuLauncher
                     string modTitle = firstHit.GetProperty("title").GetString() ?? query;
                     string projectId = firstHit.GetProperty("project_id").GetString() ?? "";
 
-                    string targetVer = (VersionBox?.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
+                    string targetVer = (VersionBox?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
                     
-                    // Fetch project versions
                     string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{targetVer}%22%5D";
                     string versionsResponse = await _httpClient.GetStringAsync(versionsUrl);
                     using var versionsDoc = JsonDocument.Parse(versionsResponse);
@@ -234,19 +232,19 @@ namespace TopuLauncher
                             byte[] modBytes = await _httpClient.GetByteArrayAsync(fileUrl);
                             await File.WriteAllBytesAsync(destPath, modBytes);
 
-                            ModSearchStatus.Text = $"Successfully downloaded and added: {modTitle}!";
+                            if (ModSearchStatus != null) ModSearchStatus.Text = $"Successfully downloaded: {modTitle}!";
                             MessageBox.Show($"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!", "Modrinth API", MessageBoxButton.OK, MessageBoxImage.Information);
                             return;
                         }
                     }
                 }
 
-                ModSearchStatus.Text = "No compatible Fabric version found for this mod on Modrinth.";
+                if (ModSearchStatus != null) ModSearchStatus.Text = "No compatible Fabric version found on Modrinth.";
                 MessageBox.Show("No compatible Fabric version found on Modrinth for your current selection.", "Mod Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             catch (Exception ex)
             {
-                ModSearchStatus.Text = "Mod search failed.";
+                if (ModSearchStatus != null) ModSearchStatus.Text = "Mod search failed.";
                 MessageBox.Show($"Error searching/downloading mod:\n{ex.Message}", "Modrinth Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -260,7 +258,7 @@ namespace TopuLauncher
                 string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
                 
-                string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
+                string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
 
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 _session = MSession.GetOfflineSession(inputUser);
@@ -340,7 +338,6 @@ namespace TopuLauncher
         {
             Directory.CreateDirectory(modsFolder);
 
-            // Comprehensive performance mod stack available across all supported versions
             var coreMods = new (string Name, string UrlQuery)[]
             {
                 ("fabric-api.jar", "fabric-api"),
