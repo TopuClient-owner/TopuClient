@@ -48,7 +48,10 @@ namespace TopuLauncher
                     if (!string.IsNullOrEmpty(savedUser))
                     {
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
-                        _session = MSession.GetOfflineSession(savedUser);
+                        
+                        // Generate a valid offline UUID for the saved username
+                        string offlineUuid = Guid.NewGuid().ToString("N");
+                        _session = new MSession(savedUser, offlineUuid, "offline_token");
                     }
                 }
             }
@@ -260,7 +263,10 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
 
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-                _session = MSession.GetOfflineSession(inputUser);
+                
+                // FIX: Generate a valid offline UUID so Minecraft doesn't crash on "user_uuid"
+                string offlineUuid = Guid.NewGuid().ToString("N");
+                _session = new MSession(inputUser, offlineUuid, "offline_token");
                 SaveUsername(inputUser);
 
                 string modsFolder = Path.Combine(gamePath, "mods");
@@ -275,7 +281,6 @@ namespace TopuLauncher
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
-                    // This automatically checks, downloads, and installs the required Java runtime + game files!
                     await launcher.CheckAndDownloadAsync(vanillaVersion);
                 }
 
