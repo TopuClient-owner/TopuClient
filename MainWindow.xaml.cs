@@ -293,14 +293,14 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                launcher.FileProgressChanged += (e) =>
+                launcher.FileChanged += (e) =>
                 {
-                    Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.FileName} ({e.ProgressPercentage}%)");
+                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.Name} ({e.FileType})");
                 };
 
-                launcher.GameFileChanged += (e) =>
+                launcher.ProgressChanged += (sender, e) =>
                 {
-                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.Name} ({e.Kind})");
+                    Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
                 };
 
                 StatusText.Text = $"Checking Minecraft {targetVer} files & Java Runtime...";
