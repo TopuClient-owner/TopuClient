@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -38,6 +40,16 @@ namespace TopuLauncher
             LoadSavedUsername();
         }
 
+        // Helper to generate a valid offline UUID from a username so Minecraft doesn't crash
+        private static string GetOfflineUuid(string username)
+        {
+            using var md5 = MD5.Create();
+            byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes("OfflinePlayer:" + username));
+            hash[6] = (byte)((hash[6] & 0x0f) | 0x30); // Version 3
+            hash[8] = (byte)((hash[8] & 0x3f) | 0x80); // Variant
+            return new Guid(hash).ToString("N");
+        }
+
         private void LoadSavedUsername()
         {
             try
@@ -49,8 +61,8 @@ namespace TopuLauncher
                     {
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
                         
-                        string offlineUuid = Guid.NewGuid().ToString("N");
-                        _session = new MSession(savedUser, offlineUuid, "offline_token");
+                        string offlineUuid = GetOfflineUuid(savedUser);
+                        _session = new MSession(savedUser, offlineUuid, "access_token");
                     }
                 }
             }
@@ -266,11 +278,11 @@ namespace TopuLauncher
                 var path = new MinecraftPath(gamePath);
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
-
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 
-                string offlineUuid = Guid.NewGuid().ToString("N");
-                _session = new MSession(inputUser, offlineUuid, "offline_token");
+                // Generate valid offline UUID format instead of string token
+                string offlineUuid = GetOfflineUuid(inputUser);
+                _session = new MSession(inputUser, offlineUuid, "access_token");
                 SaveUsername(inputUser);
 
                 string modsFolder = Path.Combine(gamePath, "mods");
@@ -281,7 +293,6 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                // Added event handlers so you can see live progress instead of looking frozen!
                 launcher.FileProgressChanged += (e) =>
                 {
                     Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.FileName} ({e.ProgressPercentage}%)");
