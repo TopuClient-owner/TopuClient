@@ -271,10 +271,11 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                StatusText.Text = $"Ensuring base Minecraft {targetVer} is installed...";
+                StatusText.Text = $"Checking Minecraft {targetVer} files & Java Runtime...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
+                    // This automatically checks, downloads, and installs the required Java runtime + game files!
                     await launcher.CheckAndDownloadAsync(vanillaVersion);
                 }
 
@@ -289,15 +290,7 @@ namespace TopuLauncher
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
                 
-                process.StartInfo.UseShellExecute = false;
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.RedirectStandardError = true;
-                process.OutputDataReceived += (s, args) => { if (!string.IsNullOrEmpty(args.Data)) Debug.WriteLine("[MC Output] " + args.Data); };
-                process.ErrorDataReceived += (s, args) => { if (!string.IsNullOrEmpty(args.Data)) Debug.WriteLine("[MC Error] " + args.Data); };
-
                 bool started = process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
 
                 if (!started)
                 {
@@ -311,7 +304,7 @@ namespace TopuLauncher
             catch (Exception ex)
             {
                 StatusText.Text = "Launch Failed!";
-                MessageBox.Show($"CRITICAL LAUNCH ERROR:\n\n{ex.Message}\n\nInner Exception:\n{ex.InnerException?.Message}\n\nStack Trace:\n{ex.StackTrace}", "Topu Client Crash", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"CRITICAL LAUNCH ERROR:\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Topu Client Crash", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
