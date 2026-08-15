@@ -28,15 +28,3 @@ TopuClient is built to strip away bloat and give you a blistering fast, modern l
 | 👥 **Universal Account Support** | Play freely with full support for both **Offline/Cracked** profiles and **Microsoft Official** accounts. |
 | 🛠️ **Built-in Mod Integration** | Search and install mods directly from **Modrinth** inside the client interface with automatic version mapping. |
 | 🎛️ **Advanced Customization** | Fine-tune your allocated RAM, switch Java runtimes, and launch custom profiles instantly. |
-
----
-
-## 📂 Project Structure
-
-```text
-TopuClient/
-├── .github/          # GitHub Actions & workflows
-├── src/              # Core source modules & assets
-├── MainWindow.xaml   # Modern dark-mode WPF user interface
-├── MainWindow.xaml.cs# C# launcher backend & Modrinth API integration
-└── TopuLauncher.csproj# Project configuration file
