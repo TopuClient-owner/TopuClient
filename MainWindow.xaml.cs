@@ -284,21 +284,11 @@ namespace TopuLauncher
                 var launchOption = new MLaunchOption
                 {
                     Session = _session,
-                    MaximumRamMb = allocatedRamMb,
-                    ExtraJvmArguments = new[]
-                    {
-                        "-XX:+UseG1GC",
-                        "-XX:-UseAdaptiveSizePolicy",
-                        "-XX:-OmitStackTraceInFastThrow"
-                    }
+                    MaximumRamMb = allocatedRamMb
                 };
-
-                // Checkpoint popup to prove it passed all preparation steps successfully
-                //MessageBox.Show("Preparation complete! About to build and start process.", "Debug Checkpoint", MessageBoxButton.OK, MessageBoxImage.Information);
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
                 
-                // Hook up output streams to catch any internal Java error logs if it crashes
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.RedirectStandardError = true;
