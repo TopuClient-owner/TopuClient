@@ -278,24 +278,50 @@ namespace TopuLauncher
                     await launcher.CheckAndDownloadAsync(vanillaVersion);
                 }
 
-                StatusText.Text = "Starting game process...";
+                StatusText.Text = "Creating game process...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOption
                 {
                     Session = _session,
-                    MaximumRamMb = allocatedRamMb
+                    MaximumRamMb = allocatedRamMb,
+                    ExtraJvmArguments = new[]
+                    {
+                        "-XX:+UseG1GC",
+                        "-XX:-UseAdaptiveSizePolicy",
+                        "-XX:-OmitStackTraceInFastThrow"
+                    }
                 };
 
-                var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
-                process.Start();
+                // Checkpoint popup to prove it passed all preparation steps successfully
+                //MessageBox.Show("Preparation complete! About to build and start process.", "Debug Checkpoint", MessageBoxButton.OK, MessageBoxImage.Information);
 
-                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
+                var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
+                
+                // Hook up output streams to catch any internal Java error logs if it crashes
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.RedirectStandardError = true;
+                process.OutputDataReceived += (s, args) => { if (!string.IsNullOrEmpty(args.Data)) Debug.WriteLine("[MC Output] " + args.Data); };
+                process.ErrorDataReceived += (s, args) => { if (!string.IsNullOrEmpty(args.Data)) Debug.WriteLine("[MC Error] " + args.Data); };
+
+                bool started = process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                if (!started)
+                {
+                    MessageBox.Show("process.Start() returned false!", "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                else
+                {
+                    StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
+                }
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"Launch Error: {ex.Message}";
-                MessageBox.Show($"Failed to launch:\n\n{ex.ToString()}", "Topu Client Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusText.Text = "Launch Failed!";
+                MessageBox.Show($"CRITICAL LAUNCH ERROR:\n\n{ex.Message}\n\nInner Exception:\n{ex.InnerException?.Message}\n\nStack Trace:\n{ex.StackTrace}", "Topu Client Crash", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
