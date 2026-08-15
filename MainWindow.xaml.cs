@@ -10,7 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Version;
+using CmlLib.Core.Process;
 
 namespace TopuLauncher
 {
@@ -290,18 +290,8 @@ namespace TopuLauncher
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
 
-                process.StartInfo.RedirectStandardError = true;
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.UseShellExecute = false;
-
+                // Start process normally to let it show the game window
                 process.Start();
-
-                string errorOutput = await process.StandardError.ReadToEndAsync();
-                
-                if (!string.IsNullOrEmpty(errorOutput) && errorOutput.Contains("Exception"))
-                {
-                    MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
 
                 StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
             }
@@ -318,7 +308,8 @@ namespace TopuLauncher
 
         private async Task<string> InstallFabricProfileAsync(string gamePath, string mcVersion)
         {
-            string loaderVersion = "0.16.0";
+            // Updated to use stable Fabric Loader 0.19.3
+            string loaderVersion = "0.19.3";
             string fabricVersionId = $"fabric-loader-{loaderVersion}-{mcVersion}";
             string versionFolder = Path.Combine(gamePath, "versions", fabricVersionId);
             string jsonFile = Path.Combine(versionFolder, $"{fabricVersionId}.json");
