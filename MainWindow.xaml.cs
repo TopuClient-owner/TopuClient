@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Process;
 
 namespace TopuLauncher
 {
@@ -289,8 +288,6 @@ namespace TopuLauncher
                 };
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
-
-                // Start process normally to let it show the game window
                 process.Start();
 
                 StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
@@ -308,7 +305,6 @@ namespace TopuLauncher
 
         private async Task<string> InstallFabricProfileAsync(string gamePath, string mcVersion)
         {
-            // Updated to use stable Fabric Loader 0.19.3
             string loaderVersion = "0.19.3";
             string fabricVersionId = $"fabric-loader-{loaderVersion}-{mcVersion}";
             string versionFolder = Path.Combine(gamePath, "versions", fabricVersionId);
