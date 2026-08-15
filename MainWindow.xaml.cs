@@ -186,58 +186,64 @@ namespace TopuLauncher
                 
                 string responseString = await _httpClient.GetStringAsync($"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}");
                 using var doc = JsonDocument.Parse(responseString);
-                var hits = doc.RootElement.GetProperty("hits");
-
-                if (hits.GetArrayLength() > 0)
+                
+                if (!doc.RootElement.TryGetProperty("hits", out var hits) || hits.GetArrayLength() == 0)
                 {
-                    var firstHit = hits[0];
-                    string modTitle = firstHit.GetProperty("title").GetString() ?? query;
-                    string projectId = firstHit.GetProperty("project_id").GetString() ?? "";
+                    if (ModSearchStatus != null) ModSearchStatus.Text = "No compatible Fabric version found on Modrinth.";
+                    MessageBox.Show("No compatible Fabric version found on Modrinth for your current selection.", "Mod Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
 
-                    string targetVer = (VersionBox?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
-                    
-                    string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{targetVer}%22%5D";
-                    string versionsResponse = await _httpClient.GetStringAsync(versionsUrl);
-                    using var versionsDoc = JsonDocument.Parse(versionsResponse);
-                    var versionRoot = versionsDoc.RootElement;
+                var firstHit = hits[0];
+                string modTitle = firstHit.TryGetProperty("title", out var titleProp) ? (titleProp.GetString() ?? query) : query;
+                string projectId = firstHit.TryGetProperty("project_id", out var idProp) ? (idProp.GetString() ?? "") : "";
 
-                    if (versionRoot.GetArrayLength() > 0)
+                if (string.IsNullOrEmpty(projectId)) return;
+
+                string targetVer = (VersionBox?.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
+                
+                string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{targetVer}%22%5D";
+                string versionsResponse = await _httpClient.GetStringAsync(versionsUrl);
+                using var versionsDoc = JsonDocument.Parse(versionsResponse);
+                var versionRoot = versionsDoc.RootElement;
+
+                if (versionRoot.GetArrayLength() > 0)
+                {
+                    var latestVerObj = versionRoot[0];
+                    if (!latestVerObj.TryGetProperty("files", out var files) || files.GetArrayLength() == 0) return;
+
+                    string fileUrl = "";
+                    string fileName = $"{modTitle}.jar";
+
+                    foreach (var file in files.EnumerateArray())
                     {
-                        var latestVerObj = versionRoot[0];
-                        var files = latestVerObj.GetProperty("files");
-                        string fileUrl = "";
-                        string fileName = $"{modTitle}.jar";
-
-                        foreach (var file in files.EnumerateArray())
+                        if (file.TryGetProperty("primary", out var primaryProp) && primaryProp.GetBoolean())
                         {
-                            if (file.GetProperty("primary").GetBoolean())
-                            {
-                                fileUrl = file.GetProperty("url").GetString() ?? "";
-                                fileName = file.GetProperty("filename").GetString() ?? fileName;
-                                break;
-                            }
+                            if (file.TryGetProperty("url", out var urlProp)) fileUrl = urlProp.GetString() ?? "";
+                            if (file.TryGetProperty("filename", out var nameProp)) fileName = nameProp.GetString() ?? fileName;
+                            break;
                         }
+                    }
 
-                        if (string.IsNullOrEmpty(fileUrl) && files.GetArrayLength() > 0)
-                        {
-                            fileUrl = files[0].GetProperty("url").GetString() ?? "";
-                            fileName = files[0].GetProperty("filename").GetString() ?? fileName;
-                        }
+                    if (string.IsNullOrEmpty(fileUrl))
+                    {
+                        if (files[0].TryGetProperty("url", out var urlProp)) fileUrl = urlProp.GetString() ?? "";
+                        if (files[0].TryGetProperty("filename", out var nameProp)) fileName = nameProp.GetString() ?? fileName;
+                    }
 
-                        if (!string.IsNullOrEmpty(fileUrl))
-                        {
-                            string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
-                            string modsFolder = Path.Combine(gamePath, "mods");
-                            Directory.CreateDirectory(modsFolder);
+                    if (!string.IsNullOrEmpty(fileUrl))
+                    {
+                        string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
+                        string modsFolder = Path.Combine(gamePath, "mods");
+                        Directory.CreateDirectory(modsFolder);
 
-                            string destPath = Path.Combine(modsFolder, fileName);
-                            byte[] modBytes = await _httpClient.GetByteArrayAsync(fileUrl);
-                            await File.WriteAllBytesAsync(destPath, modBytes);
+                        string destPath = Path.Combine(modsFolder, fileName);
+                        byte[] modBytes = await _httpClient.GetByteArrayAsync(fileUrl);
+                        await File.WriteAllBytesAsync(destPath, modBytes);
 
-                            if (ModSearchStatus != null) ModSearchStatus.Text = $"Successfully downloaded: {modTitle}!";
-                            MessageBox.Show($"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!", "Modrinth API", MessageBoxButton.OK, MessageBoxImage.Information);
-                            return;
-                        }
+                        if (ModSearchStatus != null) ModSearchStatus.Text = $"Successfully downloaded: {modTitle}!";
+                        MessageBox.Show($"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!", "Modrinth API", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
                     }
                 }
 
@@ -264,7 +270,6 @@ namespace TopuLauncher
 
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 
-                // FIX: Generate a valid offline UUID so Minecraft doesn't crash on "user_uuid"
                 string offlineUuid = Guid.NewGuid().ToString("N");
                 _session = new MSession(inputUser, offlineUuid, "offline_token");
                 SaveUsername(inputUser);
@@ -362,37 +367,41 @@ namespace TopuLauncher
                         string searchUrl = $"https://api.modrinth.com/v2/search?query={mod.UrlQuery}&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
                         string searchRes = await _httpClient.GetStringAsync(searchUrl);
                         using var doc = JsonDocument.Parse(searchRes);
-                        var hits = doc.RootElement.GetProperty("hits");
+                        
+                        if (!doc.RootElement.TryGetProperty("hits", out var hits) || hits.GetArrayLength() == 0) continue;
 
-                        if (hits.GetArrayLength() > 0)
+                        string projectId = hits[0].TryGetProperty("project_id", out var idProp) ? (idProp.GetString() ?? "") : "";
+                        if (string.IsNullOrEmpty(projectId)) continue;
+
+                        string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{mcVersion}%22%5D";
+                        string verRes = await _httpClient.GetStringAsync(versionsUrl);
+                        using var verDoc = JsonDocument.Parse(verRes);
+                        var verArray = verDoc.RootElement;
+
+                        if (verArray.GetArrayLength() > 0)
                         {
-                            string projectId = hits[0].GetProperty("project_id").GetString() ?? "";
-                            string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{mcVersion}%22%5D";
-                            string verRes = await _httpClient.GetStringAsync(versionsUrl);
-                            using var verDoc = JsonDocument.Parse(verRes);
-                            var verArray = verDoc.RootElement;
+                            var latestVerObj = verArray[0];
+                            if (!latestVerObj.TryGetProperty("files", out var files) || files.GetArrayLength() == 0) continue;
 
-                            if (verArray.GetArrayLength() > 0)
+                            string fileUrl = "";
+
+                            foreach (var file in files.EnumerateArray())
                             {
-                                var files = verArray[0].GetProperty("files");
-                                string fileUrl = "";
-
-                                foreach (var file in files.EnumerateArray())
+                                if (file.TryGetProperty("primary", out var primaryProp) && primaryProp.GetBoolean())
                                 {
-                                    if (file.GetProperty("primary").GetBoolean())
-                                    {
-                                        fileUrl = file.GetProperty("url").GetString() ?? "";
-                                        break;
-                                    }
+                                    if (file.TryGetProperty("url", out var urlProp)) fileUrl = urlProp.GetString() ?? "";
+                                    break;
                                 }
-                                if (string.IsNullOrEmpty(fileUrl) && files.GetArrayLength() > 0)
-                                    fileUrl = files[0].GetProperty("url").GetString() ?? "";
+                            }
+                            if (string.IsNullOrEmpty(fileUrl))
+                            {
+                                if (files[0].TryGetProperty("url", out var urlProp)) fileUrl = urlProp.GetString() ?? "";
+                            }
 
-                                if (!string.IsNullOrEmpty(fileUrl))
-                                {
-                                    byte[] data = await _httpClient.GetByteArrayAsync(fileUrl);
-                                    await File.WriteAllBytesAsync(destination, data);
-                                }
+                            if (!string.IsNullOrEmpty(fileUrl))
+                            {
+                                byte[] data = await _httpClient.GetByteArrayAsync(fileUrl);
+                                await File.WriteAllBytesAsync(destination, data);
                             }
                         }
                     }
