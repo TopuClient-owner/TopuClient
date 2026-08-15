@@ -295,7 +295,7 @@ namespace TopuLauncher
 
                 launcher.FileChanged += (e) =>
                 {
-                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.Name} ({e.FileType})");
+                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.FileName} ({e.FileType})");
                 };
 
                 launcher.ProgressChanged += (sender, e) =>
