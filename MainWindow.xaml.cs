@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Auth.Microsoft;
 using CmlLib.Core.Version;
 
 namespace TopuLauncher
@@ -155,34 +155,10 @@ namespace TopuLauncher
             }
         }
 
-        private async void MsLoginBtn_Click(object sender, RoutedEventArgs e)
+        private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                StatusText.Text = "Initiating Microsoft Login...";
-
-                var loginHandler = new JELoginHandler();
-                var session = await loginHandler.Authenticate();
-
-                if (session != null && session.CheckIsValid() && !string.IsNullOrEmpty(session.Username))
-                {
-                    _session = session;
-                    if (UsernameInput != null) UsernameInput.Text = _session.Username;
-                    SaveUsername(_session.Username);
-                    
-                    StatusText.Text = $"Logged in as Microsoft Account: {_session.Username}";
-                    MessageBox.Show($"Successfully logged in as {_session.Username}!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Microsoft Login failed or cancelled.";
-                }
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = "Microsoft auth requires CmlLib.Core.Auth.Microsoft package.";
-                MessageBox.Show($"Microsoft Login Note:\n\n{ex.Message}\n\nSwitching to Offline / Cracked mode.", "Auth Mode Notice", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            StatusText.Text = "Using Offline / Cracked Mode.";
+            MessageBox.Show("Topu Client is configured for fast Offline/Cracked play. Enter your username on the main screen to launch!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void JoinServer_Click(object sender, RoutedEventArgs e)
@@ -190,6 +166,88 @@ namespace TopuLauncher
             if (sender is Button btn && btn.Tag is string serverIp)
             {
                 StatusText.Text = $"Target server queued: {serverIp}";
+            }
+        }
+
+        private async void SearchModrinth_Click(object sender, RoutedEventArgs e)
+        {
+            string query = ModSearchInput?.Text?.Trim();
+            if (string.IsNullOrEmpty(query))
+            {
+                MessageBox.Show("Please enter a mod name to search on Modrinth.", "Mod Search", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                ModSearchStatus.Text = $"Searching Modrinth for '{query}'...";
+                string searchUrl = $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}&facets=%%5B%5B%22project_type%3Amod%22%5D%5D";
+                
+                string responseString = await _httpClient.GetStringAsync($"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}");
+                using var doc = JsonDocument.Parse(responseString);
+                var hits = doc.RootElement.GetProperty("hits");
+
+                if (hits.GetArrayLength() > 0)
+                {
+                    var firstHit = hits[0];
+                    string modTitle = firstHit.GetProperty("title").GetString() ?? query;
+                    string projectId = firstHit.GetProperty("project_id").GetString() ?? "";
+
+                    string targetVer = (VersionBox?.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
+                    
+                    // Fetch project versions
+                    string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{targetVer}%22%5D";
+                    string versionsResponse = await _httpClient.GetStringAsync(versionsUrl);
+                    using var versionsDoc = JsonDocument.Parse(versionsResponse);
+                    var versionRoot = versionsDoc.RootElement;
+
+                    if (versionRoot.GetArrayLength() > 0)
+                    {
+                        var latestVerObj = versionRoot[0];
+                        var files = latestVerObj.GetProperty("files");
+                        string fileUrl = "";
+                        string fileName = $"{modTitle}.jar";
+
+                        foreach (var file in files.EnumerateArray())
+                        {
+                            if (file.GetProperty("primary").GetBoolean())
+                            {
+                                fileUrl = file.GetProperty("url").GetString() ?? "";
+                                fileName = file.GetProperty("filename").GetString() ?? fileName;
+                                break;
+                            }
+                        }
+
+                        if (string.IsNullOrEmpty(fileUrl) && files.GetArrayLength() > 0)
+                        {
+                            fileUrl = files[0].GetProperty("url").GetString() ?? "";
+                            fileName = files[0].GetProperty("filename").GetString() ?? fileName;
+                        }
+
+                        if (!string.IsNullOrEmpty(fileUrl))
+                        {
+                            string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
+                            string modsFolder = Path.Combine(gamePath, "mods");
+                            Directory.CreateDirectory(modsFolder);
+
+                            string destPath = Path.Combine(modsFolder, fileName);
+                            byte[] modBytes = await _httpClient.GetByteArrayAsync(fileUrl);
+                            await File.WriteAllBytesAsync(destPath, modBytes);
+
+                            ModSearchStatus.Text = $"Successfully downloaded and added: {modTitle}!";
+                            MessageBox.Show($"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!", "Modrinth API", MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+                    }
+                }
+
+                ModSearchStatus.Text = "No compatible Fabric version found for this mod on Modrinth.";
+                MessageBox.Show("No compatible Fabric version found on Modrinth for your current selection.", "Mod Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                ModSearchStatus.Text = "Mod search failed.";
+                MessageBox.Show($"Error searching/downloading mod:\n{ex.Message}", "Modrinth Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -204,17 +262,12 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "1.21.1";
 
-                bool isOffline = AuthTypeBox == null || AuthTypeBox.SelectedIndex == 0;
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-
-                if (isOffline || _session == null || !_session.CheckIsValid())
-                {
-                    _session = MSession.GetOfflineSession(inputUser);
-                    SaveUsername(inputUser);
-                }
+                _session = MSession.GetOfflineSession(inputUser);
+                SaveUsername(inputUser);
 
                 string modsFolder = Path.Combine(gamePath, "mods");
-                await EnsureEssentialModsDownloaded(modsFolder);
+                await EnsureEssentialModsDownloaded(modsFolder, targetVer);
 
                 StatusText.Text = $"Setting up Fabric for {targetVer}...";
                 string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
@@ -252,7 +305,7 @@ namespace TopuLauncher
                     MessageBox.Show($"Minecraft Error Output:\n\n{errorOutput}", "Game Crashed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
 
-                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session?.Username ?? inputUser}!";
+                StatusText.Text = $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
             }
             catch (Exception ex)
             {
@@ -267,14 +320,15 @@ namespace TopuLauncher
 
         private async Task<string> InstallFabricProfileAsync(string gamePath, string mcVersion)
         {
-            string fabricVersionId = $"fabric-loader-0.16.0-{mcVersion}";
+            string loaderVersion = "0.16.0";
+            string fabricVersionId = $"fabric-loader-{loaderVersion}-{mcVersion}";
             string versionFolder = Path.Combine(gamePath, "versions", fabricVersionId);
             string jsonFile = Path.Combine(versionFolder, $"{fabricVersionId}.json");
 
             if (!File.Exists(jsonFile))
             {
                 Directory.CreateDirectory(versionFolder);
-                string apiUrl = $"https://meta.fabricmc.net/v2/versions/loader/{mcVersion}/0.16.0/profile/json";
+                string apiUrl = $"https://meta.fabricmc.net/v2/versions/loader/{mcVersion}/{loaderVersion}/profile/json";
                 string jsonContent = await _httpClient.GetStringAsync(apiUrl);
                 await File.WriteAllTextAsync(jsonFile, jsonContent);
             }
@@ -282,44 +336,71 @@ namespace TopuLauncher
             return fabricVersionId;
         }
 
-        private async Task EnsureEssentialModsDownloaded(string modsFolder)
+        private async Task EnsureEssentialModsDownloaded(string modsFolder, string mcVersion)
         {
             Directory.CreateDirectory(modsFolder);
 
-            var coreMods = new (string Name, string Url)[]
+            // Comprehensive performance mod stack available across all supported versions
+            var coreMods = new (string Name, string UrlQuery)[]
             {
-                ("fabric-api.jar", "https://cdn.modrinth.com/data/P7R216yC/versions/zG4CqI6T/fabric-api-0.102.0%2B1.21.1.jar"),
-                ("sodium.jar", "https://cdn.modrinth.com/data/AANAdA4C/versions/zG94D8J5/sodium-fabric-0.5.11%2Bmc1.21.1.jar"),
-                ("lithium.jar", "https://cdn.modrinth.com/data/gvQqBU10/versions/K3Kz5TjZ/lithium-fabric-0.13.0%2Bmc1.21.1.jar"),
-                ("ferritecore.jar", "https://cdn.modrinth.com/data/u62m2qw5/versions/4U7N10wz/ferritecore-7.0.0-fabric.jar"),
-                ("sodium-extra.jar", "https://cdn.modrinth.com/data/1eAoo2A1/versions/0.5.7%2Bmc1.21.1/sodium-extra-0.5.7%2Bmc1.21.1.jar"),
-                ("dynamic-fps.jar", "https://cdn.modrinth.com/data/10000001/versions/3.6.3%2B1.21.1/dynamic_fps-3.6.3%2B1.21.1-fabric.jar")
+                ("fabric-api.jar", "fabric-api"),
+                ("sodium.jar", "sodium"),
+                ("lithium.jar", "lithium"),
+                ("ferritecore.jar", "ferritecore"),
+                ("sodium-extra.jar", "sodium-extra"),
+                ("dynamic-fps.jar", "dynamic-fps")
             };
 
             foreach (var mod in coreMods)
             {
                 string destination = Path.Combine(modsFolder, mod.Name);
                 
-                if (!File.Exists(destination) || new FileInfo(destination).Length < 10000)
+                if (!File.Exists(destination) || new FileInfo(destination).Length < 5000)
                 {
                     try
                     {
-                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading mod: {mod.Name}...");
+                        Dispatcher.Invoke(() => StatusText.Text = $"Checking/Downloading {mod.Name} for {mcVersion}...");
 
-                        using (var response = await _httpClient.GetAsync(mod.Url, HttpCompletionOption.ResponseHeadersRead))
+                        string searchUrl = $"https://api.modrinth.com/v2/search?query={mod.UrlQuery}&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
+                        string searchRes = await _httpClient.GetStringAsync(searchUrl);
+                        using var doc = JsonDocument.Parse(searchRes);
+                        var hits = doc.RootElement.GetProperty("hits");
+
+                        if (hits.GetArrayLength() > 0)
                         {
-                            response.EnsureSuccessStatusCode();
+                            string projectId = hits[0].GetProperty("project_id").GetString() ?? "";
+                            string versionsUrl = $"https://api.modrinth.com/v2/project/{projectId}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{mcVersion}%22%5D";
+                            string verRes = await _httpClient.GetStringAsync(versionsUrl);
+                            using var verDoc = JsonDocument.Parse(verRes);
+                            var verArray = verDoc.RootElement;
 
-                            using (var inputStream = await response.Content.ReadAsStreamAsync())
-                            using (var outputStream = File.Create(destination))
+                            if (verArray.GetArrayLength() > 0)
                             {
-                                await inputStream.CopyToAsync(outputStream);
+                                var files = verArray[0].GetProperty("files");
+                                string fileUrl = "";
+
+                                foreach (var file in files.EnumerateArray())
+                                {
+                                    if (file.GetProperty("primary").GetBoolean())
+                                    {
+                                        fileUrl = file.GetProperty("url").GetString() ?? "";
+                                        break;
+                                    }
+                                }
+                                if (string.IsNullOrEmpty(fileUrl) && files.GetArrayLength() > 0)
+                                    fileUrl = files[0].GetProperty("url").GetString() ?? "";
+
+                                if (!string.IsNullOrEmpty(fileUrl))
+                                {
+                                    byte[] data = await _httpClient.GetByteArrayAsync(fileUrl);
+                                    await File.WriteAllBytesAsync(destination, data);
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Failed to download {mod.Name}: {ex.Message}");
+                        Debug.WriteLine($"Mod download skipped for {mod.Name}: {ex.Message}");
                     }
                 }
             }
