@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Java;
 using CmlLib.Core.Version;
 
 namespace TopuLauncher
@@ -280,27 +279,13 @@ namespace TopuLauncher
                     await launcher.CheckAndDownloadAsync(vanillaVersion);
                 }
 
-                // Automatically resolve and install the required Java runtime for this Minecraft version
-                StatusText.Text = "Checking Java runtime environment...";
-                var javaResolver = new MinecraftJavaPathResolver(path);
-                string? javaPath = javaResolver.GetJavaPath(vanillaVersion);
-
-                if (string.IsNullOrEmpty(javaPath))
-                {
-                    StatusText.Text = "Downloading required Java runtime...";
-                    var javaInstaller = new MinecraftJavaInstaller(path);
-                    var matchedJava = await javaInstaller.InstallJava(vanillaVersion);
-                    javaPath = matchedJava.JavaPath;
-                }
-
                 StatusText.Text = "Starting game process...";
                 int allocatedRamMb = (int)RamSlider.Value * 1024;
 
                 var launchOption = new MLaunchOption
                 {
                     Session = _session,
-                    MaximumRamMb = allocatedRamMb,
-                    JavaPath = javaPath
+                    MaximumRamMb = allocatedRamMb
                 };
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
