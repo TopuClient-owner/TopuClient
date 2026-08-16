@@ -40,7 +40,6 @@ namespace TopuLauncher
             LoadSavedUsername();
         }
 
-        // Helper to generate a valid offline UUID from a username so Minecraft doesn't crash
         private static string GetOfflineUuid(string username)
         {
             using var md5 = MD5.Create();
@@ -302,24 +301,12 @@ namespace TopuLauncher
                     Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
                 };
 
-                StatusText.Text = $"Preparing Minecraft {targetVer}...";
+                StatusText.Text = $"Checking Minecraft {targetVer} files & assets...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
-                    // Optimized check: Verify jar and asset index exist so sounds/menu assets load on first run, 
-                    // but skip heavy re-validation on future runs for instant launching.
-                    string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
-                    string assetIndexPath = Path.Combine(gamePath, "assets", "indexes", $"{vanillaVersion.Asset}.json");
-
-                    if (!File.Exists(jarPath) || !File.Exists(assetIndexPath))
-                    {
-                        StatusText.Text = $"Downloading missing Minecraft {targetVer} files & assets...";
-                        await launcher.CheckAndDownloadAsync(vanillaVersion);
-                    }
-                    else
-                    {
-                        StatusText.Text = "Game files and assets verified. Fast launching...";
-                    }
+                    // Let CmlLib handle game core/asset file checking safely without breaking asset bindings
+                    await launcher.CheckAndDownloadAsync(vanillaVersion);
                 }
 
                 StatusText.Text = "Creating game process...";
