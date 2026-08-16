@@ -18,17 +18,20 @@ namespace TopuLauncher
     {
         private MSession? _session;
 
-        private static readonly HttpClient _httpClient = new HttpClient(
-            new HttpClientHandler
+        private static readonly HttpClient _httpClient =
+            new HttpClient(new HttpClientHandler
             {
                 AllowAutoRedirect = true
             })
-        {
-            DefaultRequestHeaders =
             {
-                { "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopuClient/1.0" }
-            }
-        };
+                DefaultRequestHeaders =
+                {
+                    {
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopuClient/1.0"
+                    }
+                }
+            };
 
         private readonly string _configFilePath;
 
@@ -37,13 +40,17 @@ namespace TopuLauncher
             InitializeComponent();
 
             string appFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData),
                 ".topuclient"
             );
 
             Directory.CreateDirectory(appFolder);
 
-            _configFilePath = Path.Combine(appFolder, "username.txt");
+            _configFilePath = Path.Combine(
+                appFolder,
+                "username.txt"
+            );
 
             LoadSavedUsername();
         }
@@ -52,18 +59,20 @@ namespace TopuLauncher
         {
             try
             {
-                if (File.Exists(_configFilePath))
-                {
-                    string savedUser = File.ReadAllText(_configFilePath).Trim();
+                if (!File.Exists(_configFilePath))
+                    return;
 
-                    if (!string.IsNullOrEmpty(savedUser))
-                    {
-                        if (UsernameInput != null)
-                            UsernameInput.Text = savedUser;
+                string savedUser =
+                    File.ReadAllText(_configFilePath).Trim();
 
-                        _session = MSession.CreateOfflineSession(savedUser);
-                    }
-                }
+                if (string.IsNullOrEmpty(savedUser))
+                    return;
+
+                if (UsernameInput != null)
+                    UsernameInput.Text = savedUser;
+
+                _session =
+                    MSession.CreateOfflineSession(savedUser);
             }
             catch
             {
@@ -77,7 +86,10 @@ namespace TopuLauncher
             {
                 if (!string.IsNullOrWhiteSpace(username))
                 {
-                    File.WriteAllText(_configFilePath, username);
+                    File.WriteAllText(
+                        _configFilePath,
+                        username
+                    );
                 }
             }
             catch
@@ -86,7 +98,9 @@ namespace TopuLauncher
             }
         }
 
-        private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
+        private void TitleBar_MouseDown(
+            object sender,
+            MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)
             {
@@ -94,58 +108,89 @@ namespace TopuLauncher
             }
         }
 
-        private void Minimize_Click(object sender, RoutedEventArgs e)
+        private void Minimize_Click(
+            object sender,
+            RoutedEventArgs e)
         {
             WindowState = WindowState.Minimized;
         }
 
-        private void Close_Click(object sender, RoutedEventArgs e)
+        private void Close_Click(
+            object sender,
+            RoutedEventArgs e)
         {
             Close();
         }
 
-        private void SwitchTab_Click(object sender, RoutedEventArgs e)
+        private void SwitchTab_Click(
+            object sender,
+            RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is string targetTab)
+            if (sender is not Button btn ||
+                btn.Tag is not string targetTab)
             {
-                TabLaunch.Visibility = Visibility.Collapsed;
-                TabProfiles.Visibility = Visibility.Collapsed;
-                TabAccounts.Visibility = Visibility.Collapsed;
+                return;
+            }
 
-                Brush defaultColor =
-                    new SolidColorBrush(Color.FromRgb(136, 136, 136));
+            TabLaunch.Visibility =
+                Visibility.Collapsed;
 
-                Thickness noBorder = new Thickness(0);
+            TabProfiles.Visibility =
+                Visibility.Collapsed;
 
-                TabLaunchBtn.Foreground = defaultColor;
-                TabLaunchBtn.BorderThickness = noBorder;
+            TabAccounts.Visibility =
+                Visibility.Collapsed;
 
-                TabProfilesBtn.Foreground = defaultColor;
-                TabProfilesBtn.BorderThickness = noBorder;
+            Brush defaultColor =
+                new SolidColorBrush(
+                    Color.FromRgb(136, 136, 136)
+                );
 
-                TabAccountsBtn.Foreground = defaultColor;
-                TabAccountsBtn.BorderThickness = noBorder;
+            Thickness noBorder =
+                new Thickness(0);
 
-                btn.Foreground =
-                    new SolidColorBrush(Color.FromRgb(0, 255, 136));
+            TabLaunchBtn.Foreground =
+                defaultColor;
 
-                btn.BorderThickness =
-                    new Thickness(0, 0, 0, 2);
+            TabLaunchBtn.BorderThickness =
+                noBorder;
 
-                switch (targetTab)
-                {
-                    case "TabLaunch":
-                        TabLaunch.Visibility = Visibility.Visible;
-                        break;
+            TabProfilesBtn.Foreground =
+                defaultColor;
 
-                    case "TabProfiles":
-                        TabProfiles.Visibility = Visibility.Visible;
-                        break;
+            TabProfilesBtn.BorderThickness =
+                noBorder;
 
-                    case "TabAccounts":
-                        TabAccounts.Visibility = Visibility.Visible;
-                        break;
-                }
+            TabAccountsBtn.Foreground =
+                defaultColor;
+
+            TabAccountsBtn.BorderThickness =
+                noBorder;
+
+            btn.Foreground =
+                new SolidColorBrush(
+                    Color.FromRgb(0, 255, 136)
+                );
+
+            btn.BorderThickness =
+                new Thickness(0, 0, 0, 2);
+
+            switch (targetTab)
+            {
+                case "TabLaunch":
+                    TabLaunch.Visibility =
+                        Visibility.Visible;
+                    break;
+
+                case "TabProfiles":
+                    TabProfiles.Visibility =
+                        Visibility.Visible;
+                    break;
+
+                case "TabAccounts":
+                    TabAccounts.Visibility =
+                        Visibility.Visible;
+                    break;
             }
         }
 
@@ -155,11 +200,14 @@ namespace TopuLauncher
         {
             if (RamLabel != null)
             {
-                RamLabel.Text = $"{(int)e.NewValue}GB";
+                RamLabel.Text =
+                    $"{(int)e.NewValue}GB";
             }
         }
 
-        private void SaveProfile_Click(object sender, RoutedEventArgs e)
+        private void SaveProfile_Click(
+            object sender,
+            RoutedEventArgs e)
         {
             string selectedVer =
                 (VersionBox.SelectedItem as ComboBoxItem)
@@ -196,11 +244,13 @@ namespace TopuLauncher
 
             if (AuthTypeBox.SelectedIndex == 0)
             {
-                StatusText.Text = "Auth Mode: Offline / Cracked";
+                StatusText.Text =
+                    "Auth Mode: Offline / Cracked";
             }
             else
             {
-                StatusText.Text = "Auth Mode: Microsoft Official";
+                StatusText.Text =
+                    "Auth Mode: Microsoft Official";
             }
         }
 
@@ -222,7 +272,8 @@ namespace TopuLauncher
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Microsoft Login Failed!";
+                StatusText.Text =
+                    "Microsoft Login Failed!";
 
                 MessageBox.Show(
                     $"MS Login Error:\n{ex.Message}",
@@ -244,7 +295,8 @@ namespace TopuLauncher
             object sender,
             RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is string serverIp)
+            if (sender is Button btn &&
+                btn.Tag is string serverIp)
             {
                 StatusText.Text =
                     $"Target server queued: {serverIp}";
@@ -279,15 +331,20 @@ namespace TopuLauncher
                 }
 
                 string searchUrl =
-                    $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}";
+                    "https://api.modrinth.com/v2/search" +
+                    $"?query={Uri.EscapeDataString(query)}";
 
                 string responseString =
-                    await _httpClient.GetStringAsync(searchUrl);
+                    await _httpClient.GetStringAsync(
+                        searchUrl
+                    );
 
                 using JsonDocument doc =
                     JsonDocument.Parse(responseString);
 
-                if (!doc.RootElement.TryGetProperty("hits", out JsonElement hits) ||
+                if (!doc.RootElement.TryGetProperty(
+                        "hits",
+                        out JsonElement hits) ||
                     hits.GetArrayLength() == 0)
                 {
                     if (ModSearchStatus != null)
@@ -306,15 +363,20 @@ namespace TopuLauncher
                     return;
                 }
 
-                JsonElement firstHit = hits[0];
+                JsonElement firstHit =
+                    hits[0];
 
                 string modTitle =
-                    firstHit.TryGetProperty("title", out JsonElement titleProp)
+                    firstHit.TryGetProperty(
+                        "title",
+                        out JsonElement titleProp)
                         ? titleProp.GetString() ?? query
                         : query;
 
                 string projectId =
-                    firstHit.TryGetProperty("project_id", out JsonElement idProp)
+                    firstHit.TryGetProperty(
+                        "project_id",
+                        out JsonElement idProp)
                         ? idProp.GetString() ?? ""
                         : "";
 
@@ -328,12 +390,15 @@ namespace TopuLauncher
                     ?? "1.21.1";
 
                 string versionsUrl =
-                    $"https://api.modrinth.com/v2/project/{projectId}/version" +
-                    $"?loaders=%5B%22fabric%22%5D" +
+                    "https://api.modrinth.com/v2/project/" +
+                    $"{projectId}/version" +
+                    "?loaders=%5B%22fabric%22%5D" +
                     $"&game_versions=%5B%22{Uri.EscapeDataString(targetVer)}%22%5D";
 
                 string versionsResponse =
-                    await _httpClient.GetStringAsync(versionsUrl);
+                    await _httpClient.GetStringAsync(
+                        versionsUrl
+                    );
 
                 using JsonDocument versionsDoc =
                     JsonDocument.Parse(versionsResponse);
@@ -341,52 +406,42 @@ namespace TopuLauncher
                 JsonElement versionRoot =
                     versionsDoc.RootElement;
 
-                if (versionRoot.GetArrayLength() > 0)
+                if (versionRoot.GetArrayLength() == 0)
                 {
-                    JsonElement latestVerObj =
-                        versionRoot[0];
+                    MessageBox.Show(
+                        "No compatible Fabric version found.",
+                        "Mod Not Found",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning
+                    );
 
-                    if (!latestVerObj.TryGetProperty(
-                            "files",
-                            out JsonElement files) ||
-                        files.GetArrayLength() == 0)
-                    {
-                        return;
-                    }
+                    return;
+                }
 
-                    string fileUrl = "";
-                    string fileName = $"{modTitle}.jar";
+                JsonElement latestVersion =
+                    versionRoot[0];
 
-                    foreach (JsonElement file in files.EnumerateArray())
+                if (!latestVersion.TryGetProperty(
+                        "files",
+                        out JsonElement files) ||
+                    files.GetArrayLength() == 0)
+                {
+                    return;
+                }
+
+                string fileUrl = "";
+                string fileName =
+                    $"{modTitle}.jar";
+
+                foreach (JsonElement file in
+                    files.EnumerateArray())
+                {
+                    if (file.TryGetProperty(
+                            "primary",
+                            out JsonElement primaryProp) &&
+                        primaryProp.GetBoolean())
                     {
                         if (file.TryGetProperty(
-                                "primary",
-                                out JsonElement primaryProp) &&
-                            primaryProp.GetBoolean())
-                        {
-                            if (file.TryGetProperty(
-                                    "url",
-                                    out JsonElement urlProp))
-                            {
-                                fileUrl =
-                                    urlProp.GetString() ?? "";
-                            }
-
-                            if (file.TryGetProperty(
-                                    "filename",
-                                    out JsonElement nameProp))
-                            {
-                                fileName =
-                                    nameProp.GetString() ?? fileName;
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(fileUrl))
-                    {
-                        if (files[0].TryGetProperty(
                                 "url",
                                 out JsonElement urlProp))
                         {
@@ -394,68 +449,86 @@ namespace TopuLauncher
                                 urlProp.GetString() ?? "";
                         }
 
-                        if (files[0].TryGetProperty(
+                        if (file.TryGetProperty(
                                 "filename",
                                 out JsonElement nameProp))
                         {
                             fileName =
-                                nameProp.GetString() ?? fileName;
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(fileUrl))
-                    {
-                        string gamePath =
-                            Path.Combine(
-                                Environment.GetFolderPath(
-                                    Environment.SpecialFolder.ApplicationData),
-                                ".topuclient"
-                            );
-
-                        string modsFolder =
-                            Path.Combine(gamePath, "mods");
-
-                        Directory.CreateDirectory(modsFolder);
-
-                        string destPath =
-                            Path.Combine(modsFolder, fileName);
-
-                        byte[] modBytes =
-                            await _httpClient.GetByteArrayAsync(fileUrl);
-
-                        await File.WriteAllBytesAsync(
-                            destPath,
-                            modBytes
-                        );
-
-                        if (ModSearchStatus != null)
-                        {
-                            ModSearchStatus.Text =
-                                $"Successfully downloaded: {modTitle}!";
+                                nameProp.GetString()
+                                ?? fileName;
                         }
 
-                        MessageBox.Show(
-                            $"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!",
-                            "Modrinth API",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Information
-                        );
-
-                        return;
+                        break;
                     }
                 }
+
+                if (string.IsNullOrEmpty(fileUrl))
+                {
+                    if (files[0].TryGetProperty(
+                            "url",
+                            out JsonElement urlProp))
+                    {
+                        fileUrl =
+                            urlProp.GetString() ?? "";
+                    }
+
+                    if (files[0].TryGetProperty(
+                            "filename",
+                            out JsonElement nameProp))
+                    {
+                        fileName =
+                            nameProp.GetString()
+                            ?? fileName;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(fileUrl))
+                    return;
+
+                string gamePath =
+                    Path.Combine(
+                        Environment.GetFolderPath(
+                            Environment.SpecialFolder.ApplicationData),
+                        ".topuclient"
+                    );
+
+                string modsFolder =
+                    Path.Combine(
+                        gamePath,
+                        "mods"
+                    );
+
+                Directory.CreateDirectory(
+                    modsFolder
+                );
+
+                string destPath =
+                    Path.Combine(
+                        modsFolder,
+                        fileName
+                    );
+
+                byte[] modBytes =
+                    await _httpClient.GetByteArrayAsync(
+                        fileUrl
+                    );
+
+                await File.WriteAllBytesAsync(
+                    destPath,
+                    modBytes
+                );
 
                 if (ModSearchStatus != null)
                 {
                     ModSearchStatus.Text =
-                        "No compatible Fabric version found on Modrinth.";
+                        $"Successfully downloaded: {modTitle}!";
                 }
 
                 MessageBox.Show(
-                    "No compatible Fabric version found on Modrinth for your current selection.",
-                    "Mod Not Found",
+                    $"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!",
+                    "Modrinth API",
                     MessageBoxButton.OK,
-                    MessageBoxImage.Warning
+                    MessageBoxImage.Information
                 );
             }
             catch (Exception ex)
@@ -483,8 +556,8 @@ namespace TopuLauncher
 
             try
             {
-                // Close previous Java processes.
-                foreach (Process proc in Process.GetProcessesByName("javaw"))
+                foreach (Process proc in
+                    Process.GetProcessesByName("javaw"))
                 {
                     try
                     {
@@ -492,11 +565,11 @@ namespace TopuLauncher
                     }
                     catch
                     {
-                        // Ignore process kill failures.
                     }
                 }
 
-                foreach (Process proc in Process.GetProcessesByName("java"))
+                foreach (Process proc in
+                    Process.GetProcessesByName("java"))
                 {
                     try
                     {
@@ -504,7 +577,6 @@ namespace TopuLauncher
                     }
                     catch
                     {
-                        // Ignore process kill failures.
                     }
                 }
 
@@ -515,9 +587,12 @@ namespace TopuLauncher
                         ".topuclient"
                     );
 
-                Directory.CreateDirectory(gamePath);
+                Directory.CreateDirectory(
+                    gamePath
+                );
 
-                var path = new MinecraftPath(gamePath);
+                var path =
+                    new MinecraftPath(gamePath);
 
                 string targetVer =
                     (VersionBox.SelectedItem as ComboBoxItem)
@@ -525,25 +600,33 @@ namespace TopuLauncher
                     ?.ToString()
                     ?? "1.21.1";
 
-                // Offline authentication.
                 if (AuthTypeBox.SelectedIndex == 0 ||
                     _session == null ||
-                    string.IsNullOrEmpty(_session.AccessToken) ||
+                    string.IsNullOrEmpty(
+                        _session.AccessToken) ||
                     _session.AccessToken == "0")
                 {
                     string inputUser =
-                        string.IsNullOrWhiteSpace(UsernameInput.Text)
+                        string.IsNullOrWhiteSpace(
+                            UsernameInput.Text)
                             ? "TopuPlayer"
                             : UsernameInput.Text.Trim();
 
                     _session =
-                        MSession.CreateOfflineSession(inputUser);
+                        MSession.CreateOfflineSession(
+                            inputUser
+                        );
 
-                    SaveUsername(inputUser);
+                    SaveUsername(
+                        inputUser
+                    );
                 }
 
                 string modsFolder =
-                    Path.Combine(gamePath, "mods");
+                    Path.Combine(
+                        gamePath,
+                        "mods"
+                    );
 
                 await EnsureEssentialModsDownloaded(
                     modsFolder,
@@ -572,14 +655,15 @@ namespace TopuLauncher
                         });
                     };
 
-                // FIXED CS1660 ERROR:
+                // Do not use ProgressedPercentage here.
+                // Your installed CmlLib version does not expose it.
                 launcher.ByteProgressChanged +=
                     (senderObj, args) =>
                     {
                         Dispatcher.Invoke(() =>
                         {
                             StatusText.Text =
-                                $"Downloading Assets: {args.ProgressedPercentage}%";
+                                "Downloading Minecraft files...";
                         });
                     };
 
@@ -596,7 +680,9 @@ namespace TopuLauncher
                     StatusText.Text =
                         $"Downloading Official Minecraft {targetVer} files & assets...";
 
-                    await launcher.InstallAsync(targetVer);
+                    await launcher.InstallAsync(
+                        targetVer
+                    );
                 }
                 else
                 {
@@ -647,7 +733,7 @@ namespace TopuLauncher
                     "Launch Failed!";
 
                 MessageBox.Show(
-                    $"CRITICAL LAUNCH ERROR:\n\n" +
+                    "CRITICAL LAUNCH ERROR:\n\n" +
                     $"{ex.Message}\n\n" +
                     $"Stack Trace:\n{ex.StackTrace}",
                     "Topu Client Crash",
@@ -665,7 +751,8 @@ namespace TopuLauncher
             string gamePath,
             string mcVersion)
         {
-            string loaderVersion = "0.19.3";
+            string loaderVersion =
+                "0.19.3";
 
             string fabricVersionId =
                 $"fabric-loader-{loaderVersion}-{mcVersion}";
@@ -685,14 +772,18 @@ namespace TopuLauncher
 
             if (!File.Exists(jsonFile))
             {
-                Directory.CreateDirectory(versionFolder);
+                Directory.CreateDirectory(
+                    versionFolder
+                );
 
                 string apiUrl =
-                    $"https://meta.fabricmc.net/v2/versions/loader/" +
+                    "https://meta.fabricmc.net/v2/versions/loader/" +
                     $"{mcVersion}/{loaderVersion}/profile/json";
 
                 string jsonContent =
-                    await _httpClient.GetStringAsync(apiUrl);
+                    await _httpClient.GetStringAsync(
+                        apiUrl
+                    );
 
                 await File.WriteAllTextAsync(
                     jsonFile,
@@ -707,7 +798,9 @@ namespace TopuLauncher
             string modsFolder,
             string mcVersion)
         {
-            Directory.CreateDirectory(modsFolder);
+            Directory.CreateDirectory(
+                modsFolder
+            );
 
             var coreMods =
                 new (string Name, string UrlQuery)[]
@@ -743,15 +836,19 @@ namespace TopuLauncher
                     });
 
                     string searchUrl =
-                        $"https://api.modrinth.com/v2/search" +
+                        "https://api.modrinth.com/v2/search" +
                         $"?query={Uri.EscapeDataString(mod.UrlQuery)}" +
-                        $"&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
+                        "&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
 
                     string searchRes =
-                        await _httpClient.GetStringAsync(searchUrl);
+                        await _httpClient.GetStringAsync(
+                            searchUrl
+                        );
 
                     using JsonDocument doc =
-                        JsonDocument.Parse(searchRes);
+                        JsonDocument.Parse(
+                            searchRes
+                        );
 
                     if (!doc.RootElement.TryGetProperty(
                             "hits",
@@ -772,8 +869,9 @@ namespace TopuLauncher
                         continue;
 
                     string versionsUrl =
-                        $"https://api.modrinth.com/v2/project/{projectId}/version" +
-                        $"?loaders=%5B%22fabric%22%5D" +
+                        "https://api.modrinth.com/v2/project/" +
+                        $"{projectId}/version" +
+                        "?loaders=%5B%22fabric%22%5D" +
                         $"&game_versions=%5B%22{Uri.EscapeDataString(mcVersion)}%22%5D";
 
                     string verRes =
@@ -782,7 +880,9 @@ namespace TopuLauncher
                         );
 
                     using JsonDocument verDoc =
-                        JsonDocument.Parse(verRes);
+                        JsonDocument.Parse(
+                            verRes
+                        );
 
                     JsonElement verArray =
                         verDoc.RootElement;
@@ -803,7 +903,8 @@ namespace TopuLauncher
 
                     string fileUrl = "";
 
-                    foreach (JsonElement file in files.EnumerateArray())
+                    foreach (JsonElement file in
+                        files.EnumerateArray())
                     {
                         if (file.TryGetProperty(
                                 "primary",
@@ -815,7 +916,8 @@ namespace TopuLauncher
                                     out JsonElement urlProp))
                             {
                                 fileUrl =
-                                    urlProp.GetString() ?? "";
+                                    urlProp.GetString()
+                                    ?? "";
                             }
 
                             break;
@@ -829,22 +931,23 @@ namespace TopuLauncher
                                 out JsonElement urlProp))
                         {
                             fileUrl =
-                                urlProp.GetString() ?? "";
+                                urlProp.GetString()
+                                ?? "";
                         }
                     }
 
-                    if (!string.IsNullOrEmpty(fileUrl))
-                    {
-                        byte[] data =
-                            await _httpClient.GetByteArrayAsync(
-                                fileUrl
-                            );
+                    if (string.IsNullOrEmpty(fileUrl))
+                        continue;
 
-                        await File.WriteAllBytesAsync(
-                            destination,
-                            data
+                    byte[] data =
+                        await _httpClient.GetByteArrayAsync(
+                            fileUrl
                         );
-                    }
+
+                    await File.WriteAllBytesAsync(
+                        destination,
+                        data
+                    );
                 }
                 catch (Exception ex)
                 {
