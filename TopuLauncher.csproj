@@ -19,8 +19,8 @@
 
   <ItemGroup>
     <PackageReference Include="CmlLib.Core" Version="3.3.5" />
-    <!-- Aliased so its internal v4 MSession doesn't clash with v3.3.5 MSession -->
-    <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.3.1" Aliases="MsAuth" />
+    <!-- Downgraded to v3.2.2 so it uses compatible v3 core libraries instead of v4 commons -->
+    <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.2.2" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
