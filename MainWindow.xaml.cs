@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
@@ -301,27 +302,22 @@ namespace TopuLauncher
 
                 var launcher = new MinecraftLauncher(path);
 
+                launcher.FileProgressChanged += (senderObj, args) =>
+                {
+                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {args.Name} ({args.EventType})");
+                };
+
+                launcher.ByteProgressChanged += (senderObj, args) =>
+                {
+                    Dispatcher.Invoke(() => StatusText.Text =isco => $"Downloading Assets: {args.ProgressedPercentage}%");
+                };
+
                 string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
 
                 if (!File.Exists(jarPath))
                 {
                     StatusText.Text = $"Downloading Official Minecraft {targetVer} files & assets...";
-
-                    launcher.FileChanged += (e) =>
-                    {
-                        Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.FileName} ({e.FileType})");
-                    };
-
-                    launcher.ProgressChanged += (sender, e) =>
-                    {
-                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading Official Assets: {e.ProgressPercentage}%");
-                    };
-
-                    var vanillaVersion = await launcher.GetVersionAsync(targetVer);
-                    if (vanillaVersion != null)
-                    {
-                        await launcher.CheckAndDownloadAsync(vanillaVersion);
-                    }
+                    await launcher.InstallAsync(targetVer);
                 }
                 else
                 {
@@ -337,7 +333,7 @@ namespace TopuLauncher
                     MaximumRamMb = allocatedRamMb
                 };
 
-                var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
+                var process = await launcher.BuildProcessAsync(fabricVersionName, launchOption);
                 bool started = process.Start();
 
                 if (!started)
