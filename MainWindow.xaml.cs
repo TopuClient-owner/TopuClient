@@ -291,35 +291,32 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                launcher.FileChanged += (e) =>
+                // Smart launch check: If the core jar already exists, skip resource checking entirely for instant launch!
+                string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
+
+                if (!File.Exists(jarPath))
                 {
-                    Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.FileName} ({e.FileType})");
-                };
+                    StatusText.Text = $"First-time setup: Downloading Minecraft {targetVer} files & assets...";
 
-                launcher.ProgressChanged += (sender, e) =>
-                {
-                    Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
-                };
-
-                StatusText.Text = $"Preparing Minecraft {targetVer}...";
-                var vanillaVersion = await launcher.GetVersionAsync(targetVer);
-                if (vanillaVersion != null)
-                {
-                    // Smart check: Skip heavy re-validation if core jar and assets exist, ensuring instant launch
-                    string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
-                    string assetsFolder = Path.Combine(gamePath, "assets", "objects");
-
-                    bool assetsMissing = !Directory.Exists(assetsFolder) || Directory.GetFiles(assetsFolder, "*", SearchOption.AllDirectories).Length < 10;
-
-                    if (!File.Exists(jarPath) || assetsMissing)
+                    launcher.FileChanged += (e) =>
                     {
-                        StatusText.Text = $"Downloading Minecraft {targetVer} files & assets...";
+                        Dispatcher.Invoke(() => StatusText.Text = $"Checking: {e.FileName} ({e.FileType})");
+                    };
+
+                    launcher.ProgressChanged += (sender, e) =>
+                    {
+                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
+                    };
+
+                    var vanillaVersion = await launcher.GetVersionAsync(targetVer);
+                    if (vanillaVersion != null)
+                    {
                         await launcher.CheckAndDownloadAsync(vanillaVersion);
                     }
-                    else
-                    {
-                        StatusText.Text = "Game files & assets verified. Fast launching...";
-                    }
+                }
+                else
+                {
+                    StatusText.Text = "Game files found. Fast launching...";
                 }
 
                 StatusText.Text = "Creating game process...";
