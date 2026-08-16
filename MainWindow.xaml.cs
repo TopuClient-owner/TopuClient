@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Process;
 
 namespace TopuLauncher
 {
@@ -56,7 +55,7 @@ namespace TopuLauncher
             catch { }
         }
 
-        private void SaveUsername(string username)
+        private void SaveUsername(string? username)
         {
             try
             {
@@ -300,7 +299,7 @@ namespace TopuLauncher
                 StatusText.Text = $"Setting up Fabric for {targetVer}...";
                 string fabricVersionName = await InstallFabricProfileAsync(gamePath, targetVer);
 
-                var launcher = new CMLauncher(path);
+                var launcher = new MinecraftLauncher(path);
 
                 string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
 
