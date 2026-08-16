@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Process;
 using CmlLib.Core.Auth.Microsoft;
 
 namespace TopuLauncher
