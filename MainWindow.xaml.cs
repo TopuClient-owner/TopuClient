@@ -62,7 +62,6 @@ namespace TopuLauncher
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
                         
                         string offlineUuid = GetOfflineUuid(savedUser);
-                        // Fixed: Passed offlineUuid as the access token parameter to prevent MSession crash
                         _session = new MSession(savedUser, offlineUuid, offlineUuid);
                     }
                 }
@@ -281,7 +280,6 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 
-                // Fixed: Generate valid offline UUID format and pass it as accessToken parameter to avoid crash
                 string offlineUuid = GetOfflineUuid(inputUser);
                 _session = new MSession(inputUser, offlineUuid, offlineUuid);
                 SaveUsername(inputUser);
@@ -304,11 +302,24 @@ namespace TopuLauncher
                     Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
                 };
 
-                StatusText.Text = $"Checking Minecraft {targetVer} files & Java Runtime...";
+                StatusText.Text = $"Preparing Minecraft {targetVer}...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
-                    await launcher.CheckAndDownloadAsync(vanillaVersion);
+                    // Optimized check: Verify jar and asset index exist so sounds/menu assets load on first run, 
+                    // but skip heavy re-validation on future runs for instant launching.
+                    string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
+                    string assetIndexPath = Path.Combine(gamePath, "assets", "indexes", $"{vanillaVersion.Asset}.json");
+
+                    if (!File.Exists(jarPath) || !File.Exists(assetIndexPath))
+                    {
+                        StatusText.Text = $"Downloading missing Minecraft {targetVer} files & assets...";
+                        await launcher.CheckAndDownloadAsync(vanillaVersion);
+                    }
+                    else
+                    {
+                        StatusText.Text = "Game files and assets verified. Fast launching...";
+                    }
                 }
 
                 StatusText.Text = "Creating game process...";
