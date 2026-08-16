@@ -2,8 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -12,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.Process;
 using CmlLib.Core.Auth.Microsoft;
 
 namespace TopuLauncher
@@ -162,10 +161,10 @@ namespace TopuLauncher
             try
             {
                 StatusText.Text = "Opening Microsoft Login Window...";
-                if (MsLoginButton != null) MsLoginButton.IsEnabled = false;
+                if (MsLoginBtn != null) MsLoginBtn.IsEnabled = false;
 
-                var loginHandler = new JLoginHandlerBuilder().BuildDefault();
-                var session = await loginHandler.LoginInteractively();
+                var loginHandler = JLoginHandlerBuilder.BuildDefault();
+                var session = await loginHandler.LoginInteractivelyAsync();
 
                 if (session != null)
                 {
@@ -193,7 +192,7 @@ namespace TopuLauncher
             }
             finally
             {
-                if (MsLoginButton != null) MsLoginButton.IsEnabled = true;
+                if (MsLoginBtn != null) MsLoginBtn.IsEnabled = true;
             }
         }
 
@@ -311,7 +310,6 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
                 
-                // If set to Offline Mode (index 0) or no Microsoft session exists, create/use offline session
                 if (AuthTypeBox.SelectedIndex == 0 || _session == null || string.IsNullOrEmpty(_session.AccessToken) || _session.AccessToken == "0")
                 {
                     string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
