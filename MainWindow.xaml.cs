@@ -12,6 +12,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
+using CmlLib.Core.Auth.Microsoft;
 
 namespace TopuLauncher
 {
@@ -167,10 +168,44 @@ namespace TopuLauncher
             }
         }
 
-        private void MsLoginBtn_Click(object sender, RoutedEventArgs e)
+        private async void MsLoginBtn_Click(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "Using Offline / Cracked Mode.";
-            MessageBox.Show("Topu Client is configured for fast Offline/Cracked play. Enter your username on the main screen to launch!", "Topu Client Auth", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                StatusText.Text = "Opening Microsoft Login Window...";
+                if (MsLoginButton != null) MsLoginButton.IsEnabled = false;
+
+                var loginHandler = JLoginHandlerBuilder.BuildDefault();
+                var session = await loginHandler.LoginInteractively();
+
+                if (session != null)
+                {
+                    _session = session;
+                    
+                    if (UsernameInput != null)
+                    {
+                        UsernameInput.Text = _session.Username;
+                    }
+                    
+                    SaveUsername(_session.Username);
+                    
+                    StatusText.Text = $"Logged in as Microsoft User: {_session.Username}";
+                    MessageBox.Show($"Successfully authenticated as {_session.Username} via Microsoft!", "Topu Client - MS Login", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Microsoft login was cancelled.";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Microsoft Login Failed!";
+                MessageBox.Show($"MS Login Error:\n{ex.Message}", "Authentication Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                if (MsLoginButton != null) MsLoginButton.IsEnabled = true;
+            }
         }
 
         private void JoinServer_Click(object sender, RoutedEventArgs e)
@@ -273,15 +308,28 @@ namespace TopuLauncher
 
             try
             {
+                // Kill any lingering background java/javaw processes to prevent launch freezes
+                foreach (var proc in Process.GetProcessesByName("javaw"))
+                {
+                    try { proc.Kill(); } catch { }
+                }
+                foreach (var proc in Process.GetProcessesByName("java"))
+                {
+                    try { proc.Kill(); } catch { }
+                }
+
                 string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".topuclient");
                 var path = new MinecraftPath(gamePath);
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
-                string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 
-                string offlineUuid = GetOfflineUuid(inputUser);
-                _session = new MSession(inputUser, offlineUuid, offlineUuid);
-                SaveUsername(inputUser);
+                if (_session == null || AuthTypeBox.SelectedIndex == 0)
+                {
+                    string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
+                    string offlineUuid = GetOfflineUuid(inputUser);
+                    _session = new MSession(inputUser, offlineUuid, offlineUuid);
+                    SaveUsername(inputUser);
+                }
 
                 string modsFolder = Path.Combine(gamePath, "mods");
                 await EnsureEssentialModsDownloaded(modsFolder, targetVer);
@@ -291,12 +339,11 @@ namespace TopuLauncher
 
                 var launcher = new CMLauncher(path);
 
-                // Smart launch check: If the core jar already exists, skip resource checking entirely for instant launch!
                 string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
 
                 if (!File.Exists(jarPath))
                 {
-                    StatusText.Text = $"First-time setup: Downloading Minecraft {targetVer} files & assets...";
+                    StatusText.Text = $"Downloading Official Minecraft {targetVer} files & assets...";
 
                     launcher.FileChanged += (e) =>
                     {
@@ -305,7 +352,7 @@ namespace TopuLauncher
 
                     launcher.ProgressChanged += (sender, e) =>
                     {
-                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
+                        Dispatcher.Invoke(() => StatusText.Text = $"Downloading Official Assets: {e.ProgressPercentage}%");
                     };
 
                     var vanillaVersion = await launcher.GetVersionAsync(targetVer);
@@ -329,7 +376,6 @@ namespace TopuLauncher
                 };
 
                 var process = await launcher.CreateProcessAsync(fabricVersionName, launchOption);
-                
                 bool started = process.Start();
 
                 if (!started)
