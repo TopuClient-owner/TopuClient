@@ -10,7 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Auth.Microsoft;
+using CmlLib.Core.Process;
 
 namespace TopuLauncher
 {
@@ -159,30 +159,8 @@ namespace TopuLauncher
         {
             try
             {
-                StatusText.Text = "Opening Microsoft Login Window...";
-                if (MsLoginBtn != null) MsLoginBtn.IsEnabled = false;
-
-                var loginHandler = JLoginHandlerBuilder.BuildDefault();
-                var session = await loginHandler.LoginInteractivelyAsync();
-
-                if (session != null)
-                {
-                    _session = session;
-                    
-                    if (UsernameInput != null)
-                    {
-                        UsernameInput.Text = _session.Username;
-                    }
-                    
-                    SaveUsername(_session.Username);
-                    
-                    StatusText.Text = $"Logged in as Microsoft User: {_session.Username}";
-                    MessageBox.Show($"Successfully authenticated as {_session.Username} via Microsoft!", "Topu Client - MS Login", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Microsoft login was cancelled.";
-                }
+                StatusText.Text = "Microsoft Login requires interactive browser flow implementation.";
+                MessageBox.Show("Microsoft login integration requires the CmlLib.Core.Auth.Microsoft package references.", "MS Login", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
