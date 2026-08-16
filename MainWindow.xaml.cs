@@ -1,3 +1,5 @@
+extern alias MsAuth;
+
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -12,7 +14,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
-using CmlLib.Core.Auth.Microsoft;
+using JLoginHandlerBuilder = MsAuth::CmlLib.Core.Auth.Microsoft.JLoginHandlerBuilder;
 
 namespace TopuLauncher
 {
@@ -180,7 +182,8 @@ namespace TopuLauncher
 
                 if (session != null)
                 {
-                    _session = session;
+                    // Map the authenticated Microsoft session to standard CmlLib MSession
+                    _session = new MSession(session.Username, session.AccessToken, session.UUID);
                     
                     if (UsernameInput != null)
                     {
