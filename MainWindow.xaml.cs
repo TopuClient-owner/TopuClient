@@ -2,8 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,99 +18,96 @@ namespace TopuLauncher
     public partial class MainWindow : Window
     {
         private MSession? _session;
-        private Process? _minecraftProcess;
+        private ProcessWrapper? _minecraftProcess;
 
-        private static readonly HttpClient _httpClient =
-            new HttpClient(
-                new HttpClientHandler
-                {
-                    AllowAutoRedirect = true
-                })
+        private static readonly HttpClient Http = new HttpClient(
+            new HttpClientHandler
             {
-                DefaultRequestHeaders =
-                {
-                    {
-                        "User-Agent",
-                        "TopuClient/1.0"
-                    }
-                }
-            };
+                AllowAutoRedirect = true
+            });
 
         private readonly string _gamePath;
-        private readonly string _configFilePath;
-        private readonly string _logFilePath;
+        private readonly string _usernameFile;
+        private readonly string _logFile;
 
-        private const string DefaultMinecraftVersion = "1.21.1";
+        private const string DefaultVersion = "1.21.1";
 
         /*
-         * These are the versions shown by your XAML.
+         * IMPORTANT:
          *
-         * Fabric is NOT hard-coded to 0.19.3 anymore.
-         * CmlLib's FabricInstaller asks Fabric for a compatible
-         * loader and installs it properly.
+         * Keep this as a loader version that exists on Fabric's
+         * official metadata server.
+         *
+         * CmlLib's FabricInstaller will handle the Fabric profile,
+         * libraries and version JSON.
          */
-        private static readonly string[] SupportedMinecraftVersions =
-        {
-            "1.21.1",
-            "1.21.4",
-            "1.21.8",
-            "1.21.11",
-            "26.1.2",
-            "26.2"
-        };
+        private const string FabricLoaderVersion = "0.19.3";
 
         public MainWindow()
         {
             InitializeComponent();
 
-            _gamePath =
-                Path.Combine(
-                    Environment.GetFolderPath(
-                        Environment.SpecialFolder.ApplicationData),
-                    ".topuclient");
+            _gamePath = Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData),
+                ".topuclient");
 
             Directory.CreateDirectory(_gamePath);
 
-            _configFilePath =
-                Path.Combine(
-                    _gamePath,
-                    "username.txt");
+            _usernameFile = Path.Combine(
+                _gamePath,
+                "username.txt");
 
-            _logFilePath =
-                Path.Combine(
-                    _gamePath,
-                    "topu-minecraft.log");
+            _logFile = Path.Combine(
+                _gamePath,
+                "topu-minecraft.log");
 
-            LoadSavedUsername();
+            LoadUsername();
 
-            if (RamLabel != null && RamSlider != null)
+            if (RamLabel != null)
             {
                 RamLabel.Text =
                     $"{(int)RamSlider.Value}GB";
             }
 
             WriteLog("Topu Client initialized.");
-            WriteLog($"Game directory: {_gamePath}");
         }
 
         // =========================================================
         // LOGGING
         // =========================================================
 
-        private void WriteLog(string message)
+        private void WriteLog(string text)
         {
             try
             {
                 Directory.CreateDirectory(_gamePath);
 
                 File.AppendAllText(
-                    _logFilePath,
-                    $"[{DateTime.Now:HH:mm:ss}] {message}" +
+                    _logFile,
+                    $"[{DateTime.Now:HH:mm:ss}] {text}" +
                     Environment.NewLine);
             }
             catch
             {
-                // Logging must never crash the launcher.
+                // Logging must never crash launcher.
+            }
+        }
+
+        private void StartLaunchLog()
+        {
+            try
+            {
+                File.WriteAllText(
+                    _logFile,
+                    "===== TOPU CLIENT MINECRAFT LOG =====" +
+                    Environment.NewLine +
+                    $"Started: {DateTime.Now:O}" +
+                    Environment.NewLine +
+                    Environment.NewLine);
+            }
+            catch
+            {
             }
         }
 
@@ -125,53 +120,19 @@ namespace TopuLauncher
             WriteLog(ex.ToString());
         }
 
-        private void StartNewLaunchLog()
-        {
-            try
-            {
-                Directory.CreateDirectory(_gamePath);
-
-                File.WriteAllText(
-                    _logFilePath,
-                    "===== TOPU CLIENT MINECRAFT LOG =====" +
-                    Environment.NewLine +
-                    $"Started: {DateTime.Now:O}" +
-                    Environment.NewLine +
-                    Environment.NewLine);
-            }
-            catch
-            {
-            }
-        }
-
-        private void AppendMinecraftLog(string message)
-        {
-            try
-            {
-                File.AppendAllText(
-                    _logFilePath,
-                    $"[{DateTime.Now:HH:mm:ss}] {message}" +
-                    Environment.NewLine);
-            }
-            catch
-            {
-            }
-        }
-
         // =========================================================
         // USERNAME
         // =========================================================
 
-        private void LoadSavedUsername()
+        private void LoadUsername()
         {
             try
             {
-                if (!File.Exists(_configFilePath))
+                if (!File.Exists(_usernameFile))
                     return;
 
                 string username =
-                    File.ReadAllText(
-                        _configFilePath).Trim();
+                    File.ReadAllText(_usernameFile).Trim();
 
                 if (string.IsNullOrWhiteSpace(username))
                     return;
@@ -190,13 +151,14 @@ namespace TopuLauncher
             }
         }
 
-        private void SaveUsername(string username)
+        private void SaveUsername(
+            string username)
         {
             try
             {
                 File.WriteAllText(
-                    _configFilePath,
-                    username.Trim());
+                    _usernameFile,
+                    username);
             }
             catch (Exception ex)
             {
@@ -303,18 +265,24 @@ namespace TopuLauncher
             switch (tab)
             {
                 case "TabLaunch":
+
                     TabLaunch.Visibility =
                         Visibility.Visible;
+
                     break;
 
                 case "TabProfiles":
+
                     TabProfiles.Visibility =
                         Visibility.Visible;
+
                     break;
 
                 case "TabAccounts":
+
                     TabAccounts.Visibility =
                         Visibility.Visible;
+
                     break;
             }
         }
@@ -338,7 +306,7 @@ namespace TopuLauncher
         // VERSION
         // =========================================================
 
-        private string GetSelectedMinecraftVersion()
+        private string GetSelectedVersion()
         {
             string version =
                 (VersionBox.SelectedItem as ComboBoxItem)
@@ -348,27 +316,9 @@ namespace TopuLauncher
                 ?? "";
 
             if (string.IsNullOrWhiteSpace(version))
-                version = DefaultMinecraftVersion;
+                return DefaultVersion;
 
             return version;
-        }
-
-        private bool IsSupportedMinecraftVersion(
-            string version)
-        {
-            foreach (string supported in
-                     SupportedMinecraftVersions)
-            {
-                if (string.Equals(
-                        supported,
-                        version,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         // =========================================================
@@ -380,7 +330,7 @@ namespace TopuLauncher
             RoutedEventArgs e)
         {
             string version =
-                GetSelectedMinecraftVersion();
+                GetSelectedVersion();
 
             int ram =
                 (int)RamSlider.Value;
@@ -389,13 +339,13 @@ namespace TopuLauncher
                 $"Ready to launch Fabric {version}";
 
             StatusText.Text =
-                $"Profile saved: Fabric {version} with {ram}GB RAM";
+                $"Profile saved: Fabric {version}, {ram}GB RAM";
 
             WriteLog(
-                $"Profile saved. Minecraft={version}, RAM={ram}GB");
+                $"Profile saved: version={version}, RAM={ram}GB");
 
             MessageBox.Show(
-                "Profile settings saved successfully!",
+                "Profile settings saved.",
                 "Topu Client",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -432,9 +382,6 @@ namespace TopuLauncher
             {
                 MsLoginBtn.IsEnabled = false;
 
-                StatusText.Text =
-                    "Microsoft authentication is not configured.";
-
                 MessageBox.Show(
                     "Microsoft authentication is not configured in this build.\n\n" +
                     "Offline mode is currently available.",
@@ -447,12 +394,6 @@ namespace TopuLauncher
                 WriteException(
                     "MICROSOFT LOGIN ERROR",
                     ex);
-
-                MessageBox.Show(
-                    ex.Message,
-                    "Microsoft Login Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
             }
             finally
             {
@@ -463,7 +404,7 @@ namespace TopuLauncher
         }
 
         // =========================================================
-        // SERVER
+        // SERVER BUTTONS
         // =========================================================
 
         private void JoinServer_Click(
@@ -476,24 +417,11 @@ namespace TopuLauncher
             string server =
                 button.Tag?.ToString() ?? "";
 
-            if (string.IsNullOrWhiteSpace(server))
-                return;
-
             StatusText.Text =
                 $"Server selected: {server}";
 
             WriteLog(
                 $"Server selected: {server}");
-
-            /*
-             * The current XAML only has a queue/select button.
-             *
-             * When launching, you can assign this value to:
-             *
-             * MLaunchOption.ServerIp
-             *
-             * if you want automatic server connection.
-             */
         }
 
         // =========================================================
@@ -523,25 +451,29 @@ namespace TopuLauncher
                 ModSearchStatus.Text =
                     $"Searching Modrinth for {query}...";
 
-                string minecraftVersion =
-                    GetSelectedMinecraftVersion();
-
                 string searchUrl =
                     "https://api.modrinth.com/v2/search" +
-                    $"?query={Uri.EscapeDataString(query)}" +
+                    "?query=" +
+                    Uri.EscapeDataString(query) +
                     "&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
 
-                string response =
-                    await _httpClient.GetStringAsync(
-                        searchUrl);
+                using HttpResponseMessage response =
+                    await Http.GetAsync(searchUrl);
 
-                using JsonDocument document =
-                    JsonDocument.Parse(response);
+                response.EnsureSuccessStatusCode();
 
-                if (!document.RootElement.TryGetProperty(
+                using var document =
+                    await System.Text.Json.JsonDocument.ParseAsync(
+                        await response.Content.ReadAsStreamAsync());
+
+                var root =
+                    document.RootElement;
+
+                if (!root.TryGetProperty(
                         "hits",
-                        out JsonElement hits) ||
-                    hits.ValueKind != JsonValueKind.Array ||
+                        out var hits) ||
+                    hits.ValueKind !=
+                        System.Text.Json.JsonValueKind.Array ||
                     hits.GetArrayLength() == 0)
                 {
                     ModSearchStatus.Text =
@@ -550,21 +482,22 @@ namespace TopuLauncher
                     return;
                 }
 
-                JsonElement hit =
+                var hit =
                     hits[0];
 
                 string projectId =
-                    GetJsonString(
-                        hit,
-                        "project_id");
+                    hit.TryGetProperty(
+                        "project_id",
+                        out var projectIdElement)
+                    ? projectIdElement.GetString() ?? ""
+                    : "";
 
                 string title =
-                    GetJsonString(
-                        hit,
-                        "title");
-
-                if (string.IsNullOrWhiteSpace(title))
-                    title = query;
+                    hit.TryGetProperty(
+                        "title",
+                        out var titleElement)
+                    ? titleElement.GetString() ?? query
+                    : query;
 
                 if (string.IsNullOrWhiteSpace(projectId))
                 {
@@ -572,26 +505,33 @@ namespace TopuLauncher
                         "Modrinth did not return a project ID.");
                 }
 
+                string minecraftVersion =
+                    GetSelectedVersion();
+
                 string versionsUrl =
                     "https://api.modrinth.com/v2/project/" +
                     Uri.EscapeDataString(projectId) +
                     "/version" +
                     "?loaders=%5B%22fabric%22%5D" +
-                    $"&game_versions=%5B%22{Uri.EscapeDataString(minecraftVersion)}%22%5D";
+                    "&game_versions=%5B%22" +
+                    Uri.EscapeDataString(
+                        minecraftVersion) +
+                    "%22%5D";
 
-                string versionsResponse =
-                    await _httpClient.GetStringAsync(
-                        versionsUrl);
+                using HttpResponseMessage versionsResponse =
+                    await Http.GetAsync(versionsUrl);
 
-                using JsonDocument versionsDocument =
-                    JsonDocument.Parse(
-                        versionsResponse);
+                versionsResponse.EnsureSuccessStatusCode();
 
-                JsonElement versions =
+                using var versionsDocument =
+                    await System.Text.Json.JsonDocument.ParseAsync(
+                        await versionsResponse.Content.ReadAsStreamAsync());
+
+                var versions =
                     versionsDocument.RootElement;
 
                 if (versions.ValueKind !=
-                    JsonValueKind.Array ||
+                        System.Text.Json.JsonValueKind.Array ||
                     versions.GetArrayLength() == 0)
                 {
                     ModSearchStatus.Text =
@@ -600,85 +540,87 @@ namespace TopuLauncher
                     return;
                 }
 
-                JsonElement version =
+                var version =
                     versions[0];
 
                 if (!version.TryGetProperty(
                         "files",
-                        out JsonElement files) ||
+                        out var files) ||
                     files.ValueKind !=
-                    JsonValueKind.Array ||
+                        System.Text.Json.JsonValueKind.Array ||
                     files.GetArrayLength() == 0)
                 {
                     throw new InvalidOperationException(
-                        "Modrinth returned no downloadable files.");
+                        "Modrinth returned no files.");
                 }
 
-                string downloadUrl = "";
+                string? downloadUrl = null;
                 string filename =
-                    SanitizeFileName(title) + ".jar";
+                    SanitizeFileName(
+                        title) + ".jar";
 
-                foreach (JsonElement file in
+                foreach (var file in
                          files.EnumerateArray())
                 {
-                    string url =
-                        GetJsonString(
-                            file,
-                            "url");
+                    if (!file.TryGetProperty(
+                            "url",
+                            out var urlElement))
+                    {
+                        continue;
+                    }
 
-                    string possibleFilename =
-                        GetJsonString(
-                            file,
-                            "filename");
+                    string? url =
+                        urlElement.GetString();
+
+                    if (string.IsNullOrWhiteSpace(url))
+                        continue;
 
                     bool primary =
                         file.TryGetProperty(
                             "primary",
-                            out JsonElement primaryElement) &&
+                            out var primaryElement) &&
                         primaryElement.ValueKind ==
-                        JsonValueKind.True;
+                            System.Text.Json.JsonValueKind.True;
 
-                    if (!string.IsNullOrWhiteSpace(url))
+                    if (file.TryGetProperty(
+                            "filename",
+                            out var filenameElement))
                     {
-                        if (!string.IsNullOrWhiteSpace(
-                                possibleFilename))
-                        {
-                            filename =
-                                possibleFilename;
-                        }
-
-                        downloadUrl =
-                            url;
-
-                        if (primary)
-                            break;
+                        filename =
+                            filenameElement.GetString()
+                            ?? filename;
                     }
+
+                    downloadUrl = url;
+
+                    if (primary)
+                        break;
                 }
 
                 if (string.IsNullOrWhiteSpace(downloadUrl))
                 {
                     throw new InvalidOperationException(
-                        "Modrinth did not provide a download URL.");
+                        "No download URL was returned.");
                 }
 
-                string modsFolder =
+                string modsPath =
                     Path.Combine(
                         _gamePath,
                         "mods");
 
                 Directory.CreateDirectory(
-                    modsFolder);
+                    modsPath);
 
                 string destination =
                     Path.Combine(
-                        modsFolder,
+                        modsPath,
                         SanitizeFileName(filename));
 
                 ModSearchStatus.Text =
                     $"Downloading {title}...";
 
                 byte[] data =
-                    await _httpClient.GetByteArrayAsync(
+                    await Http.GetByteArrayAsync(
                         downloadUrl);
 
                 await File.WriteAllBytesAsync(
@@ -692,7 +634,7 @@ namespace TopuLauncher
                     $"Installed Modrinth mod: {title}");
 
                 MessageBox.Show(
-                    $"{title} was installed successfully.",
+                    $"{title} installed successfully.",
                     "Modrinth",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -714,25 +656,8 @@ namespace TopuLauncher
             }
         }
 
-        private static string GetJsonString(
-            JsonElement element,
-            string property)
-        {
-            if (!element.TryGetProperty(
-                    property,
-                    out JsonElement value))
-            {
-                return "";
-            }
-
-            return value.ValueKind ==
-                   JsonValueKind.String
-                ? value.GetString() ?? ""
-                : "";
-        }
-
         // =========================================================
-        // LAUNCH
+        // MAIN LAUNCH
         // =========================================================
 
         private async void LaunchBtn_Click(
@@ -743,7 +668,7 @@ namespace TopuLauncher
             {
                 try
                 {
-                    if (!_minecraftProcess.HasExited)
+                    if (!_minecraftProcess.Process.HasExited)
                     {
                         MessageBox.Show(
                             "Minecraft is already running.",
@@ -765,12 +690,12 @@ namespace TopuLauncher
 
             try
             {
-                StartNewLaunchLog();
+                StartLaunchLog();
 
                 string minecraftVersion =
-                    GetSelectedMinecraftVersion();
+                    GetSelectedVersion();
 
-                int ramMb =
+                int ram =
                     Math.Max(
                         2048,
                         (int)RamSlider.Value * 1024);
@@ -782,26 +707,22 @@ namespace TopuLauncher
                     $"Minecraft: {minecraftVersion}");
 
                 WriteLog(
-                    $"RAM: {ramMb} MB");
+                    $"Fabric Loader: {FabricLoaderVersion}");
+
+                WriteLog(
+                    $"RAM: {ram} MB");
 
                 WriteLog(
                     $"Game directory: {_gamePath}");
 
-                if (!IsSupportedMinecraftVersion(
-                        minecraftVersion))
-                {
-                    throw new InvalidOperationException(
-                        $"Minecraft version {minecraftVersion} is not in the supported version list.");
-                }
-
                 // -------------------------------------------------
-                // AUTH
+                // OFFLINE SESSION
                 // -------------------------------------------------
 
                 if (AuthTypeBox.SelectedIndex != 0)
                 {
                     throw new InvalidOperationException(
-                        "Microsoft authentication is not configured yet.");
+                        "Microsoft login is not configured yet.");
                 }
 
                 string username =
@@ -810,103 +731,32 @@ namespace TopuLauncher
                 if (string.IsNullOrWhiteSpace(username))
                     username = "TopuPlayer";
 
+                SaveUsername(username);
+
                 _session =
                     MSession.CreateOfflineSession(
                         username);
-
-                SaveUsername(username);
 
                 WriteLog(
                     $"Offline username: {username}");
 
                 // -------------------------------------------------
-                // JAVA
+                // CMLLIB
                 // -------------------------------------------------
 
                 StatusText.Text =
-                    "Checking Java 21...";
+                    $"Preparing Minecraft {minecraftVersion}...";
 
-                string? javaPath =
-                    FindJava21();
-
-                if (string.IsNullOrWhiteSpace(javaPath))
-                {
-                    throw new FileNotFoundException(
-                        "Java 21 was not found.\n\n" +
-                        "Install Java 21 or place a Java 21 runtime at:\n" +
-                        Path.Combine(
-                            _gamePath,
-                            "runtime",
-                            "java21",
-                            "bin",
-                            "java.exe"));
-                }
-
-                WriteLog(
-                    $"Java: {javaPath}");
-
-                string javaVersion =
-                    GetJavaVersion(
-                        javaPath);
-
-                WriteLog(
-                    $"Java version: {javaVersion}");
-
-                // -------------------------------------------------
-                // CMLLIB PATH
-                // -------------------------------------------------
-
-                MinecraftPath minecraftPath =
+                MinecraftPath path =
                     new MinecraftPath(
                         _gamePath);
 
                 MinecraftLauncher launcher =
                     new MinecraftLauncher(
-                        minecraftPath);
+                        path);
 
-                /*
-                 * CmlLib 4.0.6 exposes these events directly.
-                 *
-                 * We intentionally use lambda handlers with
-                 * inferred args, so the code does NOT depend on
-                 * manually declaring InstallerProgressChangedEventArgs.
-                 */
-
-                launcher.FileProgressChanged +=
-                    (sender, args) =>
-                    {
-                        Dispatcher.Invoke(
-                            () =>
-                            {
-                                StatusText.Text =
-                                    $"{args.Name} " +
-                                    $"{args.ProgressedTasks}/{args.TotalTasks}";
-                            });
-                    };
-
-                launcher.ByteProgressChanged +=
-                    (sender, args) =>
-                    {
-                        Dispatcher.Invoke(
-                            () =>
-                            {
-                                if (args.TotalBytes > 0)
-                                {
-                                    double percent =
-                                        args.ProgressedBytes *
-                                        100.0 /
-                                        args.TotalBytes;
-
-                                    StatusText.Text =
-                                        $"Downloading {percent:0}%";
-                                }
-                                else
-                                {
-                                    StatusText.Text =
-                                        $"Downloading {args.ProgressedBytes:N0} bytes";
-                                }
-                            });
-                    };
+                WriteLog(
+                    "CmlLib launcher created.");
 
                 // -------------------------------------------------
                 // VANILLA INSTALL
@@ -916,8 +766,13 @@ namespace TopuLauncher
                     $"Installing Minecraft {minecraftVersion}...";
 
                 WriteLog(
-                    $"Installing vanilla Minecraft {minecraftVersion}...");
+                    "Installing Minecraft files...");
 
+                /*
+                 * CmlLib handles the Minecraft version installation.
+                 *
+                 * This also uses its normal file extractors.
+                 */
                 await launcher.InstallAsync(
                     minecraftVersion);
 
@@ -925,112 +780,133 @@ namespace TopuLauncher
                     "Minecraft installation completed.");
 
                 // -------------------------------------------------
-                // FABRIC INSTALL
+                // FABRIC
                 // -------------------------------------------------
 
                 StatusText.Text =
-                    $"Finding Fabric loader for {minecraftVersion}...";
+                    $"Installing Fabric {FabricLoaderVersion}...";
+
+                WriteLog(
+                    "Installing Fabric through CmlLib FabricInstaller...");
 
                 FabricInstaller fabricInstaller =
                     new FabricInstaller(
-                        _httpClient);
-
-                FabricLoader? fabricLoader =
-                    await fabricInstaller.GetFirstLoader(
-                        minecraftVersion);
-
-                if (fabricLoader == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Fabric does not currently provide a loader for Minecraft {minecraftVersion}.");
-                }
-
-                if (string.IsNullOrWhiteSpace(
-                        fabricLoader.Version))
-                {
-                    throw new InvalidOperationException(
-                        $"Fabric returned an invalid loader for Minecraft {minecraftVersion}.");
-                }
-
-                string loaderVersion =
-                    fabricLoader.Version;
-
-                WriteLog(
-                    $"Fabric loader selected: {loaderVersion}");
-
-                StatusText.Text =
-                    $"Installing Fabric {loaderVersion}...";
+                        Http);
 
                 string fabricVersionName =
                     await fabricInstaller.Install(
                         minecraftVersion,
-                        loaderVersion,
-                        minecraftPath);
+                        FabricLoaderVersion,
+                        path);
 
-                if (string.IsNullOrWhiteSpace(
-                        fabricVersionName))
+                WriteLog(
+                    $"Fabric installed: {fabricVersionName}");
+
+                // -------------------------------------------------
+                // GET FABRIC VERSION
+                // -------------------------------------------------
+
+                StatusText.Text =
+                    "Preparing Fabric libraries...";
+
+                /*
+                 * Ask CmlLib to load the Fabric version it just
+                 * installed instead of manually parsing JSON.
+                 */
+                var fabricVersion =
+                    await launcher.GetVersionAsync(
+                        fabricVersionName);
+
+                WriteLog(
+                    $"Fabric profile loaded: {fabricVersionName}");
+
+                // -------------------------------------------------
+                // JAVA
+                // -------------------------------------------------
+
+                StatusText.Text =
+                    "Checking Java runtime...";
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * CmlLib 4.0.6 has GetJavaPath(IVersion).
+                 *
+                 * Its Java extractor/path resolver is part of the
+                 * launcher system. We do NOT manually construct
+                 * Java paths here.
+                 *
+                 * If the required Mojang Java runtime is absent,
+                 * CmlLib's installation/extraction system can provide
+                 * it from the Minecraft runtime metadata.
+                 */
+                string? javaPath =
+                    launcher.GetJavaPath(
+                        fabricVersion);
+
+                if (string.IsNullOrWhiteSpace(javaPath) ||
+                    !File.Exists(javaPath))
                 {
-                    throw new InvalidOperationException(
-                        "Fabric installer returned an empty version name.");
+                    WriteLog(
+                        "Required Java runtime was not found after installation.");
+
+                    /*
+                     * Re-run installation through CmlLib so its
+                     * Java extractor gets a chance to populate the
+                     * runtime.
+                     */
+                    StatusText.Text =
+                        "Installing required Java runtime...";
+
+                    await launcher.InstallAsync(
+                        fabricVersion);
+
+                    javaPath =
+                        launcher.GetJavaPath(
+                            fabricVersion);
+                }
+
+                if (string.IsNullOrWhiteSpace(javaPath) ||
+                    !File.Exists(javaPath))
+                {
+                    throw new FileNotFoundException(
+                        "CmlLib could not locate the required Java runtime.",
+                        javaPath);
                 }
 
                 WriteLog(
-                    $"Fabric version installed: {fabricVersionName}");
+                    $"Java: {javaPath}");
 
                 // -------------------------------------------------
                 // LAUNCH OPTIONS
                 // -------------------------------------------------
 
-                MLaunchOption launchOptions =
+                MLaunchOption options =
                     new MLaunchOption
                     {
                         Session = _session,
-
-                        MaximumRamMb =
-                            ramMb,
-
-                        MinimumRamMb =
-                            Math.Min(
-                                1024,
-                                ramMb),
-
-                        JavaPath =
-                            javaPath,
-
-                        Path =
-                            minecraftPath,
-
-                        GameLauncherName =
-                            "Topu Client",
-
-                        GameLauncherVersion =
-                            "1.0"
+                        JavaPath = javaPath,
+                        MaximumRamMb = ram,
+                        Path = path,
+                        GameLauncherName = "Topu Client",
+                        GameLauncherVersion = "1.0"
                     };
-
-                // -------------------------------------------------
-                // BUILD PROCESS
-                // -------------------------------------------------
-
-                StatusText.Text =
-                    "Building Minecraft process...";
 
                 WriteLog(
                     "Building Minecraft process...");
 
+                StatusText.Text =
+                    "Building Minecraft process...";
+
                 /*
-                 * IMPORTANT:
-                 *
-                 * In CmlLib.Core 4.0.6:
+                 * VERIFIED CMLLIB 4.0.6:
                  *
                  * BuildProcessAsync returns System.Diagnostics.Process.
-                 *
-                 * It does NOT return ProcessWrapper.
                  */
-
                 Process process =
                     await launcher.BuildProcessAsync(
                         fabricVersionName,
-                        launchOptions);
+                        options);
 
                 if (process == null)
                 {
@@ -1038,24 +914,30 @@ namespace TopuLauncher
                         "CmlLib returned a null Minecraft process.");
                 }
 
+                // -------------------------------------------------
+                // WRAPPER
+                // -------------------------------------------------
+
+                /*
+                 * ProcessWrapper is a CmlLib wrapper around the
+                 * System.Diagnostics.Process.
+                 */
+                ProcessWrapper wrapper =
+                    new ProcessWrapper(
+                        process);
+
                 _minecraftProcess =
-                    process;
+                    wrapper;
+
+                wrapper.OutputReceived +=
+                    Minecraft_OutputReceived;
+
+                wrapper.Exited +=
+                    Minecraft_Exited;
 
                 // -------------------------------------------------
-                // PROCESS SETTINGS
+                // LOG COMMAND
                 // -------------------------------------------------
-
-                process.EnableRaisingEvents =
-                    true;
-
-                process.OutputDataReceived +=
-                    Minecraft_OutputDataReceived;
-
-                process.ErrorDataReceived +=
-                    Minecraft_ErrorDataReceived;
-
-                process.Exited +=
-                    Minecraft_ProcessExited;
 
                 WriteLog(
                     $"Executable: {process.StartInfo.FileName}");
@@ -1064,87 +946,53 @@ namespace TopuLauncher
                     $"Arguments: {process.StartInfo.Arguments}");
 
                 WriteLog(
-                    $"Working directory: {process.StartInfo.WorkingDirectory}");
+                    $"Working Directory: {process.StartInfo.WorkingDirectory}");
 
-                WriteDebugFile(
-                    process,
-                    javaPath,
-                    minecraftVersion,
-                    fabricVersionName,
-                    loaderVersion,
-                    ramMb);
+                WriteLog(
+                    $"Java: {javaPath}");
+
+                WriteLog(
+                    "Starting Minecraft...");
+
+                StatusText.Text =
+                    $"Starting Fabric {minecraftVersion}...";
 
                 // -------------------------------------------------
                 // START
                 // -------------------------------------------------
 
-                StatusText.Text =
-                    $"Starting Fabric {minecraftVersion}...";
-
-                WriteLog(
-                    "Starting Minecraft process...");
-
-                /*
-                 * CmlLib's BuildProcessAsync creates the Process.
-                 *
-                 * Starting it manually is appropriate here because
-                 * the returned object is System.Diagnostics.Process.
-                 */
-
-                process.Start();
-
-                /*
-                 * Begin reading Minecraft's console output.
-                 *
-                 * These calls only work because the process builder
-                 * configures redirected streams.
-                 */
-                try
-                {
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                }
-                catch (Exception streamEx)
-                {
-                    WriteLog(
-                        $"Could not begin redirected output: {streamEx.Message}");
-                }
+                wrapper.StartWithEvents();
 
                 WriteLog(
                     $"Minecraft process started. PID: {process.Id}");
 
                 StatusText.Text =
-                    $"Topu Client running as {username}";
+                    $"Minecraft running as {username}";
 
-                // -------------------------------------------------
-                // MONITOR
-                // -------------------------------------------------
-
-                _ = MonitorMinecraftProcessAsync(
-                    process);
+                _ = MonitorMinecraftAsync(
+                    wrapper);
             }
             catch (Exception ex)
             {
                 StatusText.Text =
-                    "Launch Failed!";
+                    "Launch failed.";
 
                 WriteException(
-                    "TOPU CLIENT LAUNCH ERROR",
+                    "TOPU LAUNCH ERROR",
                     ex);
 
                 MessageBox.Show(
-                    "Minecraft failed to start.\n\n" +
+                    "Minecraft failed to launch.\n\n" +
                     ex.Message +
-                    "\n\nDetailed log:\n" +
-                    _logFilePath,
-                    "Topu Client Launch Error",
+                    "\n\nLog file:\n" +
+                    _logFile,
+                    "Topu Client",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
             finally
             {
-                LaunchBtn.IsEnabled =
-                    true;
+                LaunchBtn.IsEnabled = true;
             }
         }
 
@@ -1152,39 +1000,28 @@ namespace TopuLauncher
         // MINECRAFT OUTPUT
         // =========================================================
 
-        private void Minecraft_OutputDataReceived(
-            object sender,
-            DataReceivedEventArgs e)
+        private void Minecraft_OutputReceived(
+            object? sender,
+            string output)
         {
-            if (string.IsNullOrWhiteSpace(e.Data))
+            if (string.IsNullOrWhiteSpace(output))
                 return;
 
             AppendMinecraftLog(
-                "[STDOUT] " + e.Data);
+                output);
         }
 
-        private void Minecraft_ErrorDataReceived(
-            object sender,
-            DataReceivedEventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(e.Data))
-                return;
-
-            AppendMinecraftLog(
-                "[STDERR] " + e.Data);
-        }
-
-        private void Minecraft_ProcessExited(
+        private void Minecraft_Exited(
             object? sender,
             EventArgs e)
         {
-            if (_minecraftProcess == null)
-                return;
-
             try
             {
+                if (_minecraftProcess == null)
+                    return;
+
                 int exitCode =
-                    _minecraftProcess.ExitCode;
+                    _minecraftProcess.Process.ExitCode;
 
                 AppendMinecraftLog(
                     $"===== MINECRAFT EXITED: {exitCode} =====");
@@ -1200,27 +1037,25 @@ namespace TopuLauncher
                         else
                         {
                             StatusText.Text =
-                                $"Minecraft exited with code {exitCode}.";
+                                $"Minecraft exited with code {exitCode}";
                         }
                     });
             }
             catch (Exception ex)
             {
                 WriteException(
-                    "PROCESS EXIT ERROR",
+                    "EXIT EVENT ERROR",
                     ex);
             }
         }
 
-        private async Task MonitorMinecraftProcessAsync(
-            Process process)
+        private async Task MonitorMinecraftAsync(
+            ProcessWrapper wrapper)
         {
             try
             {
-                await process.WaitForExitAsync();
-
                 int exitCode =
-                    process.ExitCode;
+                    await wrapper.WaitForExitTaskAsync();
 
                 AppendMinecraftLog(
                     $"===== MINECRAFT EXITED: {exitCode} =====");
@@ -1236,7 +1071,15 @@ namespace TopuLauncher
                         else
                         {
                             StatusText.Text =
-                                $"Minecraft exited with code {exitCode}.";
+                                $"Minecraft exited with code {exitCode}";
+
+                            MessageBox.Show(
+                                "Minecraft exited unexpectedly.\n\n" +
+                                $"Exit code: {exitCode}\n\n" +
+                                $"Log:\n{_logFile}",
+                                "Minecraft",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Error);
                         }
                     });
             }
@@ -1248,308 +1091,47 @@ namespace TopuLauncher
             }
             finally
             {
-                try
-                {
-                    process.Dispose();
-                }
-                catch
-                {
-                }
-
-                _minecraftProcess =
-                    null;
+                _minecraftProcess = null;
             }
         }
 
         // =========================================================
-        // JAVA
+        // MINECRAFT LOG
         // =========================================================
 
-        private string? FindJava21()
-        {
-            // 1. Topu bundled Java
-            string bundledJava =
-                Path.Combine(
-                    _gamePath,
-                    "runtime",
-                    "java21",
-                    "bin",
-                    "java.exe");
-
-            if (File.Exists(bundledJava) &&
-                IsJava21(bundledJava))
-            {
-                return bundledJava;
-            }
-
-            // 2. JAVA_HOME
-            string javaHome =
-                Environment.GetEnvironmentVariable(
-                    "JAVA_HOME") ?? "";
-
-            if (!string.IsNullOrWhiteSpace(javaHome))
-            {
-                string java =
-                    Path.Combine(
-                        javaHome,
-                        "bin",
-                        "java.exe");
-
-                if (File.Exists(java) &&
-                    IsJava21(java))
-                {
-                    return java;
-                }
-            }
-
-            // 3. PATH
-            string path =
-                Environment.GetEnvironmentVariable(
-                    "PATH") ?? "";
-
-            foreach (string directory in
-                     path.Split(
-                         Path.PathSeparator,
-                         StringSplitOptions.RemoveEmptyEntries))
-            {
-                string java =
-                    Path.Combine(
-                        directory.Trim(),
-                        "java.exe");
-
-                if (!File.Exists(java))
-                    continue;
-
-                if (IsJava21(java))
-                    return java;
-            }
-
-            return null;
-        }
-
-        private bool IsJava21(
-            string javaPath)
+        private void AppendMinecraftLog(
+            string message)
         {
             try
             {
-                ProcessStartInfo info =
-                    new ProcessStartInfo
-                    {
-                        FileName =
-                            javaPath,
-
-                        Arguments =
-                            "-version",
-
-                        UseShellExecute =
-                            false,
-
-                        RedirectStandardOutput =
-                            true,
-
-                        RedirectStandardError =
-                            true,
-
-                        CreateNoWindow =
-                            true
-                    };
-
-                using Process process =
-                    Process.Start(info)
-                    ?? throw new InvalidOperationException(
-                        "Could not start Java.");
-
-                string stdout =
-                    process.StandardOutput.ReadToEnd();
-
-                string stderr =
-                    process.StandardError.ReadToEnd();
-
-                process.WaitForExit();
-
-                string output =
-                    stdout + Environment.NewLine + stderr;
-
-                return
-                    output.Contains(
-                        "version \"21.",
-                        StringComparison.OrdinalIgnoreCase);
+                File.AppendAllText(
+                    _logFile,
+                    $"[{DateTime.Now:HH:mm:ss}] " +
+                    message +
+                    Environment.NewLine);
             }
             catch
             {
-                return false;
-            }
-        }
-
-        private string GetJavaVersion(
-            string javaPath)
-        {
-            try
-            {
-                ProcessStartInfo info =
-                    new ProcessStartInfo
-                    {
-                        FileName =
-                            javaPath,
-
-                        Arguments =
-                            "-version",
-
-                        UseShellExecute =
-                            false,
-
-                        RedirectStandardOutput =
-                            true,
-
-                        RedirectStandardError =
-                            true,
-
-                        CreateNoWindow =
-                            true
-                    };
-
-                using Process process =
-                    Process.Start(info)
-                    ?? throw new InvalidOperationException(
-                        "Could not start Java.");
-
-                string stdout =
-                    process.StandardOutput.ReadToEnd();
-
-                string stderr =
-                    process.StandardError.ReadToEnd();
-
-                process.WaitForExit();
-
-                return
-                    (stdout +
-                     Environment.NewLine +
-                     stderr).Trim();
-            }
-            catch (Exception ex)
-            {
-                return ex.Message;
             }
         }
 
         // =========================================================
-        // DEBUG
-        // =========================================================
-
-        private void WriteDebugFile(
-            Process process,
-            string javaPath,
-            string minecraftVersion,
-            string fabricVersion,
-            string loaderVersion,
-            int ramMb)
-        {
-            try
-            {
-                string debugPath =
-                    Path.Combine(
-                        _gamePath,
-                        "topu-launch-debug.txt");
-
-                string text =
-                    "===== TOPU CLIENT DEBUG =====" +
-                    Environment.NewLine +
-                    Environment.NewLine +
-
-                    $"Minecraft: {minecraftVersion}" +
-                    Environment.NewLine +
-
-                    $"Fabric version: {fabricVersion}" +
-                    Environment.NewLine +
-
-                    $"Fabric loader: {loaderVersion}" +
-                    Environment.NewLine +
-
-                    $"RAM: {ramMb} MB" +
-                    Environment.NewLine +
-
-                    $"Java: {javaPath}" +
-                    Environment.NewLine +
-
-                    $"Executable: {process.StartInfo.FileName}" +
-                    Environment.NewLine +
-
-                    $"Arguments: {process.StartInfo.Arguments}" +
-                    Environment.NewLine +
-
-                    $"Working directory: {process.StartInfo.WorkingDirectory}" +
-                    Environment.NewLine +
-
-                    $"Game directory: {_gamePath}" +
-                    Environment.NewLine;
-
-                File.WriteAllText(
-                    debugPath,
-                    text);
-            }
-            catch (Exception ex)
-            {
-                WriteException(
-                    "DEBUG FILE ERROR",
-                    ex);
-            }
-        }
-
-        // =========================================================
-        // SANITIZE
+        // FILENAME SANITIZER
         // =========================================================
 
         private static string SanitizeFileName(
             string filename)
         {
-            foreach (char character in
+            foreach (char c in
                      Path.GetInvalidFileNameChars())
             {
                 filename =
                     filename.Replace(
-                        character,
+                        c,
                         '_');
             }
 
             return filename;
-        }
-
-        // =========================================================
-        // WINDOW CLOSE
-        // =========================================================
-
-        protected override void OnClosed(
-            EventArgs e)
-        {
-            try
-            {
-                if (_minecraftProcess != null)
-                {
-                    if (!_minecraftProcess.HasExited)
-                    {
-                        /*
-                         * Do NOT kill every Java process on the PC.
-                         * Only the Minecraft process started by Topu
-                         * is touched.
-                         */
-                        try
-                        {
-                            _minecraftProcess.CloseMainWindow();
-                        }
-                        catch
-                        {
-                        }
-                    }
-
-                    _minecraftProcess.Dispose();
-                    _minecraftProcess = null;
-                }
-            }
-            catch
-            {
-            }
-
-            base.OnClosed(e);
         }
     }
 }
