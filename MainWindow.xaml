@@ -89,6 +89,7 @@
                                     <ComboBoxItem Content="1.21.8"/>
                                     <ComboBoxItem Content="1.21.11"/>
                                     <ComboBoxItem Content="26.1.2"/>
+                                    <ComboBoxItem Content="26.2"/>
                                 </ComboBox>
                             </StackPanel>
 
