@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -28,7 +29,7 @@ namespace TopuLauncher
                 {
                     {
                         "User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopuClient/1.0"
+                        "TopuClient/1.0"
                     }
                 }
             };
@@ -65,7 +66,7 @@ namespace TopuLauncher
                 string savedUser =
                     File.ReadAllText(_configFilePath).Trim();
 
-                if (string.IsNullOrEmpty(savedUser))
+                if (string.IsNullOrWhiteSpace(savedUser))
                     return;
 
                 if (UsernameInput != null)
@@ -76,7 +77,6 @@ namespace TopuLauncher
             }
             catch
             {
-                // Ignore saved username errors.
             }
         }
 
@@ -94,7 +94,6 @@ namespace TopuLauncher
             }
             catch
             {
-                // Ignore config save errors.
             }
         }
 
@@ -264,7 +263,7 @@ namespace TopuLauncher
                     "Microsoft Login requires interactive browser flow implementation.";
 
                 MessageBox.Show(
-                    "Microsoft login integration requires the CmlLib.Core.Auth.Microsoft package references.",
+                    "Microsoft login integration requires the CmlLib.Core.Auth.Microsoft package.",
                     "MS Login",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information
@@ -310,7 +309,7 @@ namespace TopuLauncher
             string query =
                 ModSearchInput?.Text?.Trim() ?? "";
 
-            if (string.IsNullOrEmpty(query))
+            if (string.IsNullOrWhiteSpace(query))
             {
                 MessageBox.Show(
                     "Please enter a mod name to search on Modrinth.",
@@ -334,13 +333,13 @@ namespace TopuLauncher
                     "https://api.modrinth.com/v2/search" +
                     $"?query={Uri.EscapeDataString(query)}";
 
-                string responseString =
+                string response =
                     await _httpClient.GetStringAsync(
                         searchUrl
                     );
 
                 using JsonDocument doc =
-                    JsonDocument.Parse(responseString);
+                    JsonDocument.Parse(response);
 
                 if (!doc.RootElement.TryGetProperty(
                         "hits",
@@ -350,11 +349,11 @@ namespace TopuLauncher
                     if (ModSearchStatus != null)
                     {
                         ModSearchStatus.Text =
-                            "No compatible Fabric version found on Modrinth.";
+                            "No compatible Fabric version found.";
                     }
 
                     MessageBox.Show(
-                        "No compatible Fabric version found on Modrinth for your current selection.",
+                        "No compatible Fabric mod was found.",
                         "Mod Not Found",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning
@@ -380,11 +379,11 @@ namespace TopuLauncher
                         ? idProp.GetString() ?? ""
                         : "";
 
-                if (string.IsNullOrEmpty(projectId))
+                if (string.IsNullOrWhiteSpace(projectId))
                     return;
 
                 string targetVer =
-                    (VersionBox?.SelectedItem as ComboBoxItem)
+                    (VersionBox.SelectedItem as ComboBoxItem)
                     ?.Content
                     ?.ToString()
                     ?? "1.21.1";
@@ -401,15 +400,17 @@ namespace TopuLauncher
                     );
 
                 using JsonDocument versionsDoc =
-                    JsonDocument.Parse(versionsResponse);
+                    JsonDocument.Parse(
+                        versionsResponse
+                    );
 
-                JsonElement versionRoot =
+                JsonElement versions =
                     versionsDoc.RootElement;
 
-                if (versionRoot.GetArrayLength() == 0)
+                if (versions.GetArrayLength() == 0)
                 {
                     MessageBox.Show(
-                        "No compatible Fabric version found.",
+                        $"No Fabric build for Minecraft {targetVer} was found.",
                         "Mod Not Found",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning
@@ -418,10 +419,10 @@ namespace TopuLauncher
                     return;
                 }
 
-                JsonElement latestVersion =
-                    versionRoot[0];
+                JsonElement latest =
+                    versions[0];
 
-                if (!latestVersion.TryGetProperty(
+                if (!latest.TryGetProperty(
                         "files",
                         out JsonElement files) ||
                     files.GetArrayLength() == 0)
@@ -438,23 +439,23 @@ namespace TopuLauncher
                 {
                     if (file.TryGetProperty(
                             "primary",
-                            out JsonElement primaryProp) &&
-                        primaryProp.GetBoolean())
+                            out JsonElement primary) &&
+                        primary.GetBoolean())
                     {
                         if (file.TryGetProperty(
                                 "url",
-                                out JsonElement urlProp))
+                                out JsonElement url))
                         {
                             fileUrl =
-                                urlProp.GetString() ?? "";
+                                url.GetString() ?? "";
                         }
 
                         if (file.TryGetProperty(
                                 "filename",
-                                out JsonElement nameProp))
+                                out JsonElement filename))
                         {
                             fileName =
-                                nameProp.GetString()
+                                filename.GetString()
                                 ?? fileName;
                         }
 
@@ -466,31 +467,27 @@ namespace TopuLauncher
                 {
                     if (files[0].TryGetProperty(
                             "url",
-                            out JsonElement urlProp))
+                            out JsonElement url))
                     {
                         fileUrl =
-                            urlProp.GetString() ?? "";
+                            url.GetString() ?? "";
                     }
 
                     if (files[0].TryGetProperty(
                             "filename",
-                            out JsonElement nameProp))
+                            out JsonElement filename))
                     {
                         fileName =
-                            nameProp.GetString()
+                            filename.GetString()
                             ?? fileName;
                     }
                 }
 
-                if (string.IsNullOrEmpty(fileUrl))
+                if (string.IsNullOrWhiteSpace(fileUrl))
                     return;
 
                 string gamePath =
-                    Path.Combine(
-                        Environment.GetFolderPath(
-                            Environment.SpecialFolder.ApplicationData),
-                        ".topuclient"
-                    );
+                    GetGamePath();
 
                 string modsFolder =
                     Path.Combine(
@@ -502,20 +499,20 @@ namespace TopuLauncher
                     modsFolder
                 );
 
-                string destPath =
+                string destination =
                     Path.Combine(
                         modsFolder,
                         fileName
                     );
 
-                byte[] modBytes =
+                byte[] bytes =
                     await _httpClient.GetByteArrayAsync(
                         fileUrl
                     );
 
                 await File.WriteAllBytesAsync(
-                    destPath,
-                    modBytes
+                    destination,
+                    bytes
                 );
 
                 if (ModSearchStatus != null)
@@ -525,8 +522,8 @@ namespace TopuLauncher
                 }
 
                 MessageBox.Show(
-                    $"Mod '{modTitle}' successfully added to your mods folder for {targetVer}!",
-                    "Modrinth API",
+                    $"Mod '{modTitle}' was added to your mods folder.",
+                    "Modrinth",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information
                 );
@@ -540,7 +537,7 @@ namespace TopuLauncher
                 }
 
                 MessageBox.Show(
-                    $"Error searching/downloading mod:\n{ex.Message}",
+                    $"Mod search/download error:\n{ex.Message}",
                     "Modrinth Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error
@@ -556,43 +553,14 @@ namespace TopuLauncher
 
             try
             {
-                foreach (Process proc in
-                    Process.GetProcessesByName("javaw"))
-                {
-                    try
-                    {
-                        proc.Kill();
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                foreach (Process proc in
-                    Process.GetProcessesByName("java"))
-                {
-                    try
-                    {
-                        proc.Kill();
-                    }
-                    catch
-                    {
-                    }
-                }
+                KillExistingMinecraft();
 
                 string gamePath =
-                    Path.Combine(
-                        Environment.GetFolderPath(
-                            Environment.SpecialFolder.ApplicationData),
-                        ".topuclient"
-                    );
+                    GetGamePath();
 
                 Directory.CreateDirectory(
                     gamePath
                 );
-
-                var path =
-                    new MinecraftPath(gamePath);
 
                 string targetVer =
                     (VersionBox.SelectedItem as ComboBoxItem)
@@ -606,7 +574,7 @@ namespace TopuLauncher
                         _session.AccessToken) ||
                     _session.AccessToken == "0")
                 {
-                    string inputUser =
+                    string username =
                         string.IsNullOrWhiteSpace(
                             UsernameInput.Text)
                             ? "TopuPlayer"
@@ -614,13 +582,39 @@ namespace TopuLauncher
 
                     _session =
                         MSession.CreateOfflineSession(
-                            inputUser
+                            username
                         );
 
                     SaveUsername(
-                        inputUser
+                        username
                     );
                 }
+
+                // -------------------------------------------------
+                // AUTOMATIC JAVA 21
+                // -------------------------------------------------
+
+                StatusText.Text =
+                    "Checking Java 21 runtime...";
+
+                string javaPath =
+                    await EnsureJava21Async(
+                        gamePath
+                    );
+
+                if (!File.Exists(javaPath))
+                {
+                    throw new Exception(
+                        "Java runtime was not found after installation."
+                    );
+                }
+
+                StatusText.Text =
+                    "Java 21 is ready.";
+
+                // -------------------------------------------------
+                // MODS
+                // -------------------------------------------------
 
                 string modsFolder =
                     Path.Combine(
@@ -633,6 +627,10 @@ namespace TopuLauncher
                     targetVer
                 );
 
+                // -------------------------------------------------
+                // FABRIC
+                // -------------------------------------------------
+
                 StatusText.Text =
                     $"Setting up Fabric for {targetVer}...";
 
@@ -642,8 +640,19 @@ namespace TopuLauncher
                         targetVer
                     );
 
+                // -------------------------------------------------
+                // CMLLIB
+                // -------------------------------------------------
+
+                var path =
+                    new MinecraftPath(
+                        gamePath
+                    );
+
                 var launcher =
-                    new MinecraftLauncher(path);
+                    new MinecraftLauncher(
+                        path
+                    );
 
                 launcher.FileProgressChanged +=
                     (senderObj, args) =>
@@ -655,8 +664,8 @@ namespace TopuLauncher
                         });
                     };
 
-                // Do not use ProgressedPercentage here.
-                // Your installed CmlLib version does not expose it.
+                // Do NOT use ProgressedPercentage.
+                // Your CmlLib version does not contain it.
                 launcher.ByteProgressChanged +=
                     (senderObj, args) =>
                     {
@@ -678,7 +687,7 @@ namespace TopuLauncher
                 if (!File.Exists(jarPath))
                 {
                     StatusText.Text =
-                        $"Downloading Official Minecraft {targetVer} files & assets...";
+                        $"Downloading Minecraft {targetVer}...";
 
                     await launcher.InstallAsync(
                         targetVer
@@ -687,11 +696,15 @@ namespace TopuLauncher
                 else
                 {
                     StatusText.Text =
-                        "Game files found. Fast launching...";
+                        "Minecraft files found.";
                 }
 
+                // -------------------------------------------------
+                // LAUNCH
+                // -------------------------------------------------
+
                 StatusText.Text =
-                    "Creating game process...";
+                    "Creating Minecraft process...";
 
                 int allocatedRamMb =
                     (int)RamSlider.Value * 1024;
@@ -700,7 +713,8 @@ namespace TopuLauncher
                     new MLaunchOption
                     {
                         Session = _session,
-                        MaximumRamMb = allocatedRamMb
+                        MaximumRamMb = allocatedRamMb,
+                        JavaPath = javaPath
                     };
 
                 var process =
@@ -714,18 +728,13 @@ namespace TopuLauncher
 
                 if (!started)
                 {
-                    MessageBox.Show(
-                        "process.Start() returned false!",
-                        "Launch Error",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Error
+                    throw new Exception(
+                        "Minecraft process failed to start."
                     );
                 }
-                else
-                {
-                    StatusText.Text =
-                        $"Topu Client ({fabricVersionName}) running as {_session.Username}!";
-                }
+
+                StatusText.Text =
+                    $"Topu Client running as {_session.Username}";
             }
             catch (Exception ex)
             {
@@ -746,6 +755,362 @@ namespace TopuLauncher
                 LaunchBtn.IsEnabled = true;
             }
         }
+
+        // =========================================================
+        // GAME PATH
+        // =========================================================
+
+        private string GetGamePath()
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData),
+                ".topuclient"
+            );
+        }
+
+        // =========================================================
+        // KILL OLD MINECRAFT
+        // =========================================================
+
+        private void KillExistingMinecraft()
+        {
+            foreach (Process process in
+                Process.GetProcessesByName("javaw"))
+            {
+                try
+                {
+                    process.Kill();
+                }
+                catch
+                {
+                }
+            }
+
+            foreach (Process process in
+                Process.GetProcessesByName("java"))
+            {
+                try
+                {
+                    process.Kill();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        // =========================================================
+        // JAVA 21 INSTALLER
+        // =========================================================
+
+        private async Task<string> EnsureJava21Async(
+            string gamePath)
+        {
+            string runtimeFolder =
+                Path.Combine(
+                    gamePath,
+                    "runtime",
+                    "java21"
+                );
+
+            string javaExe =
+                Path.Combine(
+                    runtimeFolder,
+                    "bin",
+                    "javaw.exe"
+                );
+
+            if (File.Exists(javaExe))
+            {
+                return javaExe;
+            }
+
+            StatusText.Text =
+                "Java 21 not found. Downloading Java...";
+
+            Directory.CreateDirectory(
+                runtimeFolder
+            );
+
+            string zipPath =
+                Path.Combine(
+                    gamePath,
+                    "runtime",
+                    "java21.zip"
+                );
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(zipPath)!
+            );
+
+            // Eclipse Temurin 21 Windows x64 JRE.
+            string javaDownloadUrl =
+                "https://api.adoptium.net/v3/binary/latest/21/ga/windows/" +
+                "x64/jre/hotspot/normal/eclipse";
+
+            try
+            {
+                using HttpResponseMessage response =
+                    await _httpClient.GetAsync(
+                        javaDownloadUrl,
+                        HttpCompletionOption.ResponseHeadersRead
+                    );
+
+                response.EnsureSuccessStatusCode();
+
+                using Stream input =
+                    await response.Content.ReadAsStreamAsync();
+
+                using FileStream output =
+                    new FileStream(
+                        zipPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None
+                    );
+
+                await input.CopyToAsync(
+                    output
+                );
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(
+                    "Could not download Java 21.\n\n" +
+                    "Please check your internet connection.\n\n" +
+                    ex.Message,
+                    ex
+                );
+            }
+
+            StatusText.Text =
+                "Extracting Java 21...";
+
+            string extractionFolder =
+                Path.Combine(
+                    gamePath,
+                    "runtime",
+                    "java21-extracted"
+                );
+
+            if (Directory.Exists(
+                extractionFolder))
+            {
+                Directory.Delete(
+                    extractionFolder,
+                    true
+                );
+            }
+
+            Directory.CreateDirectory(
+                extractionFolder
+            );
+
+            try
+            {
+                ZipFile.ExtractToDirectory(
+                    zipPath,
+                    extractionFolder
+                );
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(
+                    "Java archive could not be extracted.\n\n" +
+                    ex.Message,
+                    ex
+                );
+            }
+
+            string? extractedJava =
+                FindJavaExecutable(
+                    extractionFolder
+                );
+
+            if (string.IsNullOrEmpty(
+                extractedJava))
+            {
+                throw new Exception(
+                    "Java 21 was downloaded, but javaw.exe could not be found."
+                );
+            }
+
+            string? javaBinFolder =
+                Path.GetDirectoryName(
+                    extractedJava
+                );
+
+            if (string.IsNullOrEmpty(
+                javaBinFolder))
+            {
+                throw new Exception(
+                    "Could not determine Java installation directory."
+                );
+            }
+
+            string actualJavaRoot =
+                Directory.GetParent(
+                    javaBinFolder
+                )?.FullName ?? "";
+
+            if (string.IsNullOrEmpty(
+                actualJavaRoot))
+            {
+                throw new Exception(
+                    "Could not determine Java installation root."
+                );
+            }
+
+            if (Directory.Exists(
+                runtimeFolder))
+            {
+                Directory.Delete(
+                    runtimeFolder,
+                    true
+                );
+            }
+
+            CopyDirectory(
+                actualJavaRoot,
+                runtimeFolder
+            );
+
+            string finalJavaPath =
+                Path.Combine(
+                    runtimeFolder,
+                    "bin",
+                    "javaw.exe"
+                );
+
+            if (!File.Exists(
+                finalJavaPath))
+            {
+                throw new Exception(
+                    "Java installation completed, but javaw.exe is missing."
+                );
+            }
+
+            try
+            {
+                File.Delete(
+                    zipPath
+                );
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                Directory.Delete(
+                    extractionFolder,
+                    true
+                );
+            }
+            catch
+            {
+            }
+
+            StatusText.Text =
+                "Java 21 installed successfully.";
+
+            return finalJavaPath;
+        }
+
+        private string? FindJavaExecutable(
+            string root)
+        {
+            try
+            {
+                string directPath =
+                    Path.Combine(
+                        root,
+                        "bin",
+                        "javaw.exe"
+                    );
+
+                if (File.Exists(
+                    directPath))
+                {
+                    return directPath;
+                }
+
+                foreach (string directory in
+                    Directory.GetDirectories(
+                        root))
+                {
+                    string? result =
+                        FindJavaExecutable(
+                            directory
+                        );
+
+                    if (!string.IsNullOrEmpty(
+                        result))
+                    {
+                        return result;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private void CopyDirectory(
+            string sourceDirectory,
+            string destinationDirectory)
+        {
+            DirectoryInfo source =
+                new DirectoryInfo(
+                    sourceDirectory
+                );
+
+            if (!source.Exists)
+                throw new DirectoryNotFoundException(
+                    sourceDirectory
+                );
+
+            Directory.CreateDirectory(
+                destinationDirectory
+            );
+
+            foreach (FileInfo file in
+                source.GetFiles())
+            {
+                string target =
+                    Path.Combine(
+                        destinationDirectory,
+                        file.Name
+                    );
+
+                file.CopyTo(
+                    target,
+                    true
+                );
+            }
+
+            foreach (DirectoryInfo directory in
+                source.GetDirectories())
+            {
+                string target =
+                    Path.Combine(
+                        destinationDirectory,
+                        directory.Name
+                    );
+
+                CopyDirectory(
+                    directory.FullName,
+                    target
+                );
+            }
+        }
+
+        // =========================================================
+        // FABRIC INSTALLER
+        // =========================================================
 
         private async Task<string> InstallFabricProfileAsync(
             string gamePath,
@@ -770,7 +1135,8 @@ namespace TopuLauncher
                     $"{fabricVersionId}.json"
                 );
 
-            if (!File.Exists(jsonFile))
+            if (!File.Exists(
+                jsonFile))
             {
                 Directory.CreateDirectory(
                     versionFolder
@@ -794,6 +1160,10 @@ namespace TopuLauncher
             return fabricVersionId;
         }
 
+        // =========================================================
+        // ESSENTIAL MODS
+        // =========================================================
+
         private async Task EnsureEssentialModsDownloaded(
             string modsFolder,
             string mcVersion)
@@ -803,7 +1173,7 @@ namespace TopuLauncher
             );
 
             var coreMods =
-                new (string Name, string UrlQuery)[]
+                new (string Name, string Query)[]
                 {
                     ("fabric-api.jar", "fabric-api"),
                     ("sodium.jar", "sodium"),
@@ -821,8 +1191,10 @@ namespace TopuLauncher
                         mod.Name
                     );
 
-                if (File.Exists(destination) &&
-                    new FileInfo(destination).Length >= 5000)
+                if (File.Exists(
+                    destination) &&
+                    new FileInfo(
+                        destination).Length >= 5000)
                 {
                     continue;
                 }
@@ -832,25 +1204,25 @@ namespace TopuLauncher
                     Dispatcher.Invoke(() =>
                     {
                         StatusText.Text =
-                            $"Checking/Downloading {mod.Name} for {mcVersion}...";
+                            $"Checking {mod.Name}...";
                     });
 
                     string searchUrl =
                         "https://api.modrinth.com/v2/search" +
-                        $"?query={Uri.EscapeDataString(mod.UrlQuery)}" +
+                        $"?query={Uri.EscapeDataString(mod.Query)}" +
                         "&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
 
-                    string searchRes =
+                    string searchResponse =
                         await _httpClient.GetStringAsync(
                             searchUrl
                         );
 
-                    using JsonDocument doc =
+                    using JsonDocument searchDoc =
                         JsonDocument.Parse(
-                            searchRes
+                            searchResponse
                         );
 
-                    if (!doc.RootElement.TryGetProperty(
+                    if (!searchDoc.RootElement.TryGetProperty(
                             "hits",
                             out JsonElement hits) ||
                         hits.GetArrayLength() == 0)
@@ -865,8 +1237,11 @@ namespace TopuLauncher
                             ? idProp.GetString() ?? ""
                             : "";
 
-                    if (string.IsNullOrEmpty(projectId))
+                    if (string.IsNullOrEmpty(
+                        projectId))
+                    {
                         continue;
+                    }
 
                     string versionsUrl =
                         "https://api.modrinth.com/v2/project/" +
@@ -874,26 +1249,26 @@ namespace TopuLauncher
                         "?loaders=%5B%22fabric%22%5D" +
                         $"&game_versions=%5B%22{Uri.EscapeDataString(mcVersion)}%22%5D";
 
-                    string verRes =
+                    string versionResponse =
                         await _httpClient.GetStringAsync(
                             versionsUrl
                         );
 
-                    using JsonDocument verDoc =
+                    using JsonDocument versionDoc =
                         JsonDocument.Parse(
-                            verRes
+                            versionResponse
                         );
 
-                    JsonElement verArray =
-                        verDoc.RootElement;
+                    JsonElement versions =
+                        versionDoc.RootElement;
 
-                    if (verArray.GetArrayLength() == 0)
+                    if (versions.GetArrayLength() == 0)
                         continue;
 
-                    JsonElement latestVerObj =
-                        verArray[0];
+                    JsonElement latest =
+                        versions[0];
 
-                    if (!latestVerObj.TryGetProperty(
+                    if (!latest.TryGetProperty(
                             "files",
                             out JsonElement files) ||
                         files.GetArrayLength() == 0)
@@ -908,15 +1283,15 @@ namespace TopuLauncher
                     {
                         if (file.TryGetProperty(
                                 "primary",
-                                out JsonElement primaryProp) &&
-                            primaryProp.GetBoolean())
+                                out JsonElement primary) &&
+                            primary.GetBoolean())
                         {
                             if (file.TryGetProperty(
                                     "url",
-                                    out JsonElement urlProp))
+                                    out JsonElement url))
                             {
                                 fileUrl =
-                                    urlProp.GetString()
+                                    url.GetString()
                                     ?? "";
                             }
 
@@ -924,20 +1299,24 @@ namespace TopuLauncher
                         }
                     }
 
-                    if (string.IsNullOrEmpty(fileUrl))
+                    if (string.IsNullOrEmpty(
+                        fileUrl))
                     {
                         if (files[0].TryGetProperty(
                                 "url",
-                                out JsonElement urlProp))
+                                out JsonElement url))
                         {
                             fileUrl =
-                                urlProp.GetString()
+                                url.GetString()
                                 ?? "";
                         }
                     }
 
-                    if (string.IsNullOrEmpty(fileUrl))
+                    if (string.IsNullOrEmpty(
+                        fileUrl))
+                    {
                         continue;
+                    }
 
                     byte[] data =
                         await _httpClient.GetByteArrayAsync(
