@@ -62,7 +62,8 @@ namespace TopuLauncher
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
                         
                         string offlineUuid = GetOfflineUuid(savedUser);
-                        _session = new MSession(savedUser, offlineUuid, "access_token");
+                        // Fixed: Passed offlineUuid as the access token parameter to prevent MSession crash
+                        _session = new MSession(savedUser, offlineUuid, offlineUuid);
                     }
                 }
             }
@@ -280,9 +281,9 @@ namespace TopuLauncher
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
                 string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
                 
-                // Generate valid offline UUID format instead of string token
+                // Fixed: Generate valid offline UUID format and pass it as accessToken parameter to avoid crash
                 string offlineUuid = GetOfflineUuid(inputUser);
-                _session = new MSession(inputUser, offlineUuid, "access_token");
+                _session = new MSession(inputUser, offlineUuid, offlineUuid);
                 SaveUsername(inputUser);
 
                 string modsFolder = Path.Combine(gamePath, "mods");
