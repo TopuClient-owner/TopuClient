@@ -301,12 +301,25 @@ namespace TopuLauncher
                     Dispatcher.Invoke(() => StatusText.Text = $"Downloading: {e.ProgressPercentage}%");
                 };
 
-                StatusText.Text = $"Checking Minecraft {targetVer} files & assets...";
+                StatusText.Text = $"Preparing Minecraft {targetVer}...";
                 var vanillaVersion = await launcher.GetVersionAsync(targetVer);
                 if (vanillaVersion != null)
                 {
-                    // Let CmlLib handle game core/asset file checking safely without breaking asset bindings
-                    await launcher.CheckAndDownloadAsync(vanillaVersion);
+                    // Smart check: Skip heavy re-validation if core jar and assets exist, ensuring instant launch
+                    string jarPath = Path.Combine(gamePath, "versions", targetVer, $"{targetVer}.jar");
+                    string assetsFolder = Path.Combine(gamePath, "assets", "objects");
+
+                    bool assetsMissing = !Directory.Exists(assetsFolder) || Directory.GetFiles(assetsFolder, "*", SearchOption.AllDirectories).Length < 10;
+
+                    if (!File.Exists(jarPath) || assetsMissing)
+                    {
+                        StatusText.Text = $"Downloading Minecraft {targetVer} files & assets...";
+                        await launcher.CheckAndDownloadAsync(vanillaVersion);
+                    }
+                    else
+                    {
+                        StatusText.Text = "Game files & assets verified. Fast launching...";
+                    }
                 }
 
                 StatusText.Text = "Creating game process...";
