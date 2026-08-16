@@ -41,15 +41,6 @@ namespace TopuLauncher
             LoadSavedUsername();
         }
 
-        private static string GetOfflineUuid(string username)
-        {
-            using var md5 = MD5.Create();
-            byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes("OfflinePlayer:" + username));
-            hash[6] = (byte)((hash[6] & 0x0f) | 0x30); // Version 3
-            hash[8] = (byte)((hash[8] & 0x3f) | 0x80); // Variant
-            return new Guid(hash).ToString("N");
-        }
-
         private void LoadSavedUsername()
         {
             try
@@ -60,9 +51,7 @@ namespace TopuLauncher
                     if (!string.IsNullOrEmpty(savedUser))
                     {
                         if (UsernameInput != null) UsernameInput.Text = savedUser;
-                        
-                        string offlineUuid = GetOfflineUuid(savedUser);
-                        _session = new MSession(savedUser, offlineUuid, offlineUuid);
+                        _session = MSession.CreateOfflineSession(savedUser);
                     }
                 }
             }
@@ -322,11 +311,11 @@ namespace TopuLauncher
                 
                 string targetVer = (VersionBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "1.21.1";
                 
-                if (_session == null || AuthTypeBox.SelectedIndex == 0)
+                // If set to Offline Mode (index 0) or no Microsoft session exists, create/use offline session
+                if (AuthTypeBox.SelectedIndex == 0 || _session == null || string.IsNullOrEmpty(_session.AccessToken) || _session.AccessToken == "0")
                 {
                     string inputUser = string.IsNullOrWhiteSpace(UsernameInput.Text) ? "TopuPlayer" : UsernameInput.Text.Trim();
-                    string offlineUuid = GetOfflineUuid(inputUser);
-                    _session = new MSession(inputUser, offlineUuid, offlineUuid);
+                    _session = MSession.CreateOfflineSession(inputUser);
                     SaveUsername(inputUser);
                 }
 
