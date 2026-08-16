@@ -308,7 +308,6 @@ namespace TopuLauncher
 
             try
             {
-                // Kill any lingering background java/javaw processes to prevent launch freezes
                 foreach (var proc in Process.GetProcessesByName("javaw"))
                 {
                     try { proc.Kill(); } catch { }
