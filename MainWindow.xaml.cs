@@ -718,9 +718,131 @@ namespace TopuLauncher
             }
 
             WriteLog(
-                $"Fabric installed: {fabricVersionName}");
+                $"Fabric installer returned: {fabricVersionName}");
+
+            /*
+             * Do not trust the installer return value by itself.
+             * Verify that the actual Fabric version JSON and loader JAR
+             * exist before allowing Minecraft to continue.
+             */
+            if (!IsFabricInstallationUsable(
+                    fabricVersionName))
+            {
+                WriteLog(
+                    "Fabric installation is incomplete after the first install.");
+
+                WriteLog(
+                    "Retrying Fabric installation once.");
+
+                string brokenDirectory =
+                    Path.Combine(
+                        _gamePath,
+                        "versions",
+                        fabricVersionName);
+
+                try
+                {
+                    if (Directory.Exists(brokenDirectory))
+                    {
+                        Directory.Delete(
+                            brokenDirectory,
+                            true);
+
+                        WriteLog(
+                            $"Removed incomplete Fabric directory: {brokenDirectory}");
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    WriteException(
+                        "FABRIC CLEANUP ERROR",
+                        cleanupEx);
+                }
+
+                fabricVersionName =
+                    await fabricInstaller.Install(
+                        minecraftVersion,
+                        minecraftPath);
+
+                if (string.IsNullOrWhiteSpace(
+                        fabricVersionName))
+                {
+                    throw new InvalidOperationException(
+                        "Fabric installer returned an empty version name on retry.");
+                }
+
+                WriteLog(
+                    $"Fabric installer retry returned: {fabricVersionName}");
+
+                if (!IsFabricInstallationUsable(
+                        fabricVersionName))
+                {
+                    throw new InvalidOperationException(
+                        "Fabric installation completed but the required Fabric files were not created.");
+                }
+            }
+
+            WriteLog(
+                $"Fabric installed and verified: {fabricVersionName}");
 
             return fabricVersionName;
+        }
+
+        private bool IsFabricInstallationUsable(
+            string fabricVersionName)
+        {
+            try
+            {
+                string fabricDirectory =
+                    Path.Combine(
+                        _gamePath,
+                        "versions",
+                        fabricVersionName);
+
+                string fabricJson =
+                    Path.Combine(
+                        fabricDirectory,
+                        fabricVersionName + ".json");
+
+                if (!Directory.Exists(fabricDirectory))
+                {
+                    WriteLog(
+                        $"Fabric version directory does not exist: {fabricDirectory}");
+
+                    return false;
+                }
+
+                if (!File.Exists(fabricJson))
+                {
+                    WriteLog(
+                        $"Fabric version JSON does not exist: {fabricJson}");
+
+                    return false;
+                }
+
+                string loaderJar =
+                    FindFabricLoaderJar(
+                        _gamePath,
+                        fabricVersionName);
+
+                if (string.IsNullOrWhiteSpace(loaderJar))
+                {
+                    WriteLog(
+                        "Fabric loader JAR was not found under libraries.");
+
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "FABRIC INSTALLATION CHECK ERROR",
+                    ex);
+
+                return false;
+            }
         }
 
         // ============================================================
@@ -1648,13 +1770,17 @@ namespace TopuLauncher
                 if (!librariesExists)
                 {
                     WriteLog(
-                        "WARNING: Libraries directory is missing.");
+                        "ERROR: Libraries directory is missing.");
+
+                    return false;
                 }
 
                 if (!versionsExists)
                 {
                     WriteLog(
-                        "WARNING: Versions directory is missing.");
+                        "ERROR: Versions directory is missing.");
+
+                    return false;
                 }
 
                 if (!fabricExists)
@@ -1665,21 +1791,52 @@ namespace TopuLauncher
                     return false;
                 }
 
-                string fabricJar =
+                /*
+                 * IMPORTANT:
+                 *
+                 * The Fabric loader JAR is normally stored in:
+                 *
+                 * libraries/net/fabricmc/fabric-loader/<loader-version>/
+                 *
+                 * It is NOT required to also exist as:
+                 *
+                 * versions/<fabricVersion>/<fabricVersion>.jar
+                 *
+                 * The old validator incorrectly required that second file,
+                 * which caused a valid Fabric installation to be rejected.
+                 */
+
+                string fabricJson =
                     Path.Combine(
                         fabricDirectory,
-                        fabricVersion + ".jar");
+                        fabricVersion + ".json");
 
-                if (!File.Exists(fabricJar))
+                if (!File.Exists(fabricJson))
                 {
                     WriteLog(
-                        $"ERROR: Fabric loader JAR missing: {fabricJar}");
+                        $"ERROR: Fabric version JSON missing: {fabricJson}");
 
                     return false;
                 }
 
                 WriteLog(
-                    $"Fabric loader JAR exists: {fabricJar}");
+                    $"Fabric version JSON exists: {fabricJson}");
+
+                string loaderJar =
+                    FindFabricLoaderJar(
+                        root,
+                        fabricVersion);
+
+                if (string.IsNullOrWhiteSpace(loaderJar))
+                {
+                    WriteLog(
+                        "ERROR: Fabric loader library JAR could not be found.");
+
+                    return false;
+                }
+
+                WriteLog(
+                    $"Fabric loader library JAR exists: {loaderJar}");
 
                 WriteLog(
                     "===== INSTALLATION VALIDATION COMPLETE =====");
@@ -1694,6 +1851,53 @@ namespace TopuLauncher
 
                 return false;
             }
+        }
+
+        private string FindFabricLoaderJar(
+            string root,
+            string fabricVersion)
+        {
+            try
+            {
+                string librariesRoot =
+                    Path.Combine(
+                        root,
+                        "libraries");
+
+                if (!Directory.Exists(librariesRoot))
+                    return "";
+
+                string exactName =
+                    fabricVersion + ".jar";
+
+                foreach (string file in
+                         Directory.EnumerateFiles(
+                             librariesRoot,
+                             exactName,
+                             SearchOption.AllDirectories))
+                {
+                    if (File.Exists(file))
+                        return file;
+                }
+
+                foreach (string file in
+                         Directory.EnumerateFiles(
+                             librariesRoot,
+                             "fabric-loader-*.jar",
+                             SearchOption.AllDirectories))
+                {
+                    if (File.Exists(file))
+                        return file;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "FABRIC LOADER JAR SEARCH ERROR",
+                    ex);
+            }
+
+            return "";
         }
 
         // ============================================================
