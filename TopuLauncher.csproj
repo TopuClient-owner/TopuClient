@@ -20,7 +20,6 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 
-    <!-- Windows EXE icon -->
     <ApplicationIcon>Assets\TopuLauncher.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -34,11 +33,8 @@
 
   </ItemGroup>
 
-  <!-- Make sure the ICO is available to the WPF application -->
   <ItemGroup>
-
     <Resource Include="Assets\TopuLauncher.ico" />
-
   </ItemGroup>
 
 </Project>
