@@ -67,11 +67,17 @@ namespace TopuLauncher
             "26.2"
         };
 
+        // ============================================================
+        // PERFORMANCE MODS
+        //
+        // INDium REMOVED ONLY.
+        // Everything else stays.
+        // ============================================================
+
         private static readonly (string Slug, string Name)[] PerformanceMods =
         {
             ("sodium", "Sodium"),
             ("lithium", "Lithium"),
-            ("indium", "Indium"),
             ("dynamic-fps", "Dynamic FPS"),
             ("sodium-extra", "Sodium Extra"),
             ("krypton", "Krypton")
@@ -730,7 +736,18 @@ namespace TopuLauncher
         }
 
         // ============================================================
-        // FABRIC
+        // FABRIC INSTALL
+        //
+        // IMPORTANT:
+        //
+        // We DO NOT call:
+        //
+        //     launcher.InstallAsync(minecraftVersion)
+        //
+        // first.
+        //
+        // FabricInstaller is responsible for preparing the Fabric
+        // installation. We then build the Fabric version directly.
         // ============================================================
 
         private async Task<string> InstallFabricAsync(
@@ -738,13 +755,13 @@ namespace TopuLauncher
             MinecraftPath minecraftPath)
         {
             StatusText.Text =
-                $"Installing Fabric for Minecraft {minecraftVersion}...";
+                $"Installing Fabric {minecraftVersion}...";
 
             WriteLog(
                 "===== FABRIC INSTALLATION START =====");
 
             WriteLog(
-                $"CmlLib Fabric installer starting for {minecraftVersion}.");
+                $"Starting CmlLib Fabric installer for {minecraftVersion}.");
 
             FabricInstaller fabricInstaller =
                 new FabricInstaller(Http);
@@ -762,13 +779,13 @@ namespace TopuLauncher
             }
 
             WriteLog(
-                $"CmlLib Fabric version: {fabricVersionName}");
+                $"Fabric installed: {fabricVersionName}");
 
             if (!ValidateFabricInstallation(
                     fabricVersionName))
             {
                 throw new InvalidOperationException(
-                    "Fabric installation was not verified. Check topu-minecraft.log.");
+                    "Fabric installation could not be verified.");
             }
 
             WriteLog(
@@ -830,7 +847,7 @@ namespace TopuLauncher
                 if (string.IsNullOrWhiteSpace(json))
                 {
                     WriteLog(
-                        "Fabric version JSON is empty.");
+                        "Fabric JSON is empty.");
 
                     return false;
                 }
@@ -937,7 +954,7 @@ namespace TopuLauncher
                         $"Optional mod failed: {name}");
 
                     WriteLog(
-                        ex.Message);
+                        ex.ToString());
                 }
             }
 
@@ -1594,10 +1611,6 @@ namespace TopuLauncher
                     await output.FlushAsync();
                 }
 
-                /*
-                 * All HTTP and FileStream objects are now disposed.
-                 */
-
                 WriteLog(
                     "Java download streams completely closed.");
 
@@ -1796,13 +1809,6 @@ namespace TopuLauncher
         private async Task WaitForArchiveReadyAsync(
             string path)
         {
-            /*
-             * Windows Defender / antivirus / indexing can briefly
-             * inspect a newly downloaded ZIP.
-             *
-             * Wait up to 60 seconds instead of failing after ~5 sec.
-             */
-
             const int maxAttempts = 120;
 
             for (int attempt = 1;
@@ -2144,136 +2150,6 @@ namespace TopuLauncher
         }
 
         // ============================================================
-        // MINECRAFT INSTALL VALIDATION
-        // ============================================================
-
-        private bool ValidateMinecraftInstallation(
-            string minecraftVersion,
-            string fabricVersion)
-        {
-            try
-            {
-                WriteLog(
-                    "===== INSTALLATION VALIDATION =====");
-
-                string versionsDirectory =
-                    Path.Combine(
-                        _gamePath,
-                        "versions");
-
-                string vanillaDirectory =
-                    Path.Combine(
-                        versionsDirectory,
-                        minecraftVersion);
-
-                string fabricDirectory =
-                    Path.Combine(
-                        versionsDirectory,
-                        fabricVersion);
-
-                if (!Directory.Exists(
-                        Path.Combine(
-                            _gamePath,
-                            "libraries")))
-                {
-                    WriteLog(
-                        "ERROR: libraries directory missing.");
-
-                    return false;
-                }
-
-                if (!Directory.Exists(
-                        vanillaDirectory))
-                {
-                    WriteLog(
-                        "ERROR: vanilla directory missing.");
-
-                    return false;
-                }
-
-                if (!Directory.Exists(
-                        fabricDirectory))
-                {
-                    WriteLog(
-                        "ERROR: Fabric directory missing.");
-
-                    return false;
-                }
-
-                string vanillaJson =
-                    Path.Combine(
-                        vanillaDirectory,
-                        minecraftVersion +
-                        ".json");
-
-                string fabricJson =
-                    Path.Combine(
-                        fabricDirectory,
-                        fabricVersion +
-                        ".json");
-
-                if (!File.Exists(
-                        vanillaJson))
-                {
-                    WriteLog(
-                        $"ERROR: Vanilla JSON missing: {vanillaJson}");
-
-                    return false;
-                }
-
-                if (!File.Exists(
-                        fabricJson))
-                {
-                    WriteLog(
-                        $"ERROR: Fabric JSON missing: {fabricJson}");
-
-                    return false;
-                }
-
-                using JsonDocument vanillaDocument =
-                    JsonDocument.Parse(
-                        File.ReadAllText(
-                            vanillaJson));
-
-                using JsonDocument fabricDocument =
-                    JsonDocument.Parse(
-                        File.ReadAllText(
-                            fabricJson));
-
-                if (vanillaDocument.RootElement.ValueKind !=
-                    JsonValueKind.Object)
-                {
-                    return false;
-                }
-
-                if (fabricDocument.RootElement.ValueKind !=
-                    JsonValueKind.Object)
-                {
-                    return false;
-                }
-
-                WriteLog(
-                    "Vanilla JSON is valid.");
-
-                WriteLog(
-                    "Fabric JSON is valid.");
-
-                WriteLog(
-                    "===== INSTALLATION VALIDATION COMPLETE =====");
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                WriteException(
-                    "INSTALLATION VALIDATION ERROR",
-                    ex);
-
-                return false;
-            }
-        }
-
-        // ============================================================
         // MAIN LAUNCH
         // ============================================================
 
@@ -2389,19 +2265,8 @@ namespace TopuLauncher
                         minecraftPath);
 
                 // ====================================================
-                // CMLLIB 4.0.6 PROGRESS EVENTS
+                // CMLLIB PROGRESS EVENTS
                 // ====================================================
-
-                /*
-                 * CmlLib.Core 4.0.6 exposes FileProgressChanged and
-                 * ByteProgressChanged events on MinecraftLauncher.
-                 *
-                 * We intentionally DO NOT declare
-                 * InstallerProgressChangedEventArgs here.
-                 *
-                 * This avoids the CS0246 problem from the previous
-                 * version of the launcher.
-                 */
 
                 launcher.FileProgressChanged +=
                     (sender2, args) =>
@@ -2447,36 +2312,9 @@ namespace TopuLauncher
                     };
 
                 // ====================================================
-                // VANILLA INSTALL
-                // ====================================================
-
-                StatusText.Text =
-                    $"Installing Minecraft {minecraftVersion}...";
-
-                WriteLog(
-                    "Installing base Minecraft files.");
-
-                /*
-                 * IMPORTANT:
-                 *
-                 * CmlLib.Core 4.0.6's documented pattern is to attach
-                 * to launcher.FileProgressChanged and
-                 * launcher.ByteProgressChanged, then call:
-                 *
-                 *     await launcher.InstallAsync(version);
-                 *
-                 * No InstallerProgressChangedEventArgs variable is
-                 * needed here.
-                 */
-
-                await launcher.InstallAsync(
-                    minecraftVersion);
-
-                WriteLog(
-                    "Base Minecraft installation complete.");
-
-                // ====================================================
-                // FABRIC
+                // FABRIC INSTALL
+                //
+                // NO SEPARATE VANILLA INSTALL HERE.
                 // ====================================================
 
                 string fabricVersion =
@@ -2485,19 +2323,7 @@ namespace TopuLauncher
                         minecraftPath);
 
                 WriteLog(
-                    $"Fabric version: {fabricVersion}");
-
-                // ====================================================
-                // VALIDATE
-                // ====================================================
-
-                if (!ValidateMinecraftInstallation(
-                        minecraftVersion,
-                        fabricVersion))
-                {
-                    throw new InvalidOperationException(
-                        "Minecraft/Fabric installation validation failed.");
-                }
+                    $"Fabric version ready: {fabricVersion}");
 
                 // ====================================================
                 // PERFORMANCE MODS
@@ -2540,14 +2366,14 @@ namespace TopuLauncher
                     };
 
                 // ====================================================
-                // BUILD PROCESS
+                // BUILD FABRIC PROCESS DIRECTLY
                 // ====================================================
 
                 StatusText.Text =
-                    "Building Minecraft process...";
+                    "Building Fabric Minecraft process...";
 
                 WriteLog(
-                    "Building Minecraft Fabric process.");
+                    "Building Fabric process directly.");
 
                 Process process =
                     await launcher.BuildProcessAsync(
