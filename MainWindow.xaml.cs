@@ -1,4 +1,3 @@
-
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -721,17 +720,9 @@ namespace TopuLauncher
             WriteLog(
                 $"Fabric installer returned: {fabricVersionName}");
 
-            // CmlLib can report a successful Fabric install even when a
-            // stale/corrupt loader JAR is already present in libraries.
-            // Verify that the actual KnotClient class exists in the JAR
-            // before CmlLib builds the Java process.
-            await EnsureFabricLoaderJarAsync(fabricVersionName);
+            await EnsureFabricLoaderJarAsync(
+                fabricVersionName);
 
-            /*
-             * Do not trust the installer return value by itself.
-             * Verify that the actual Fabric version JSON and loader JAR
-             * exist before allowing Minecraft to continue.
-             */
             if (!IsFabricInstallationUsable(
                     fabricVersionName))
             {
@@ -781,7 +772,8 @@ namespace TopuLauncher
                 WriteLog(
                     $"Fabric installer retry returned: {fabricVersionName}");
 
-                await EnsureFabricLoaderJarAsync(fabricVersionName);
+                await EnsureFabricLoaderJarAsync(
+                    fabricVersionName);
 
                 if (!IsFabricInstallationUsable(
                         fabricVersionName))
@@ -791,10 +783,449 @@ namespace TopuLauncher
                 }
             }
 
+            /*
+             * NEW:
+             *
+             * CmlLib generated ASM entries in the classpath, but
+             * the physical ASM JARs were missing from:
+             *
+             * libraries/org/ow2/asm/
+             *
+             * Read the Fabric JSON and explicitly install all
+             * Maven dependencies required by Fabric.
+             */
+            await EnsureFabricDependenciesAsync(
+                fabricVersionName);
+
             WriteLog(
                 $"Fabric installed and verified: {fabricVersionName}");
 
             return fabricVersionName;
+        }
+
+        // ============================================================
+        // FABRIC DEPENDENCY REPAIR
+        // ============================================================
+
+        private async Task EnsureFabricDependenciesAsync(
+            string fabricVersionName)
+        {
+            WriteLog(
+                "===== FABRIC DEPENDENCY VALIDATION =====");
+
+            string fabricJsonPath =
+                Path.Combine(
+                    _gamePath,
+                    "versions",
+                    fabricVersionName,
+                    fabricVersionName + ".json");
+
+            if (!File.Exists(fabricJsonPath))
+            {
+                throw new FileNotFoundException(
+                    "Fabric version JSON was not found.",
+                    fabricJsonPath);
+            }
+
+            string json =
+                await File.ReadAllTextAsync(
+                    fabricJsonPath);
+
+            using JsonDocument document =
+                JsonDocument.Parse(json);
+
+            JsonElement root =
+                document.RootElement;
+
+            /*
+             * Fabric version JSON can contain libraries in:
+             *
+             * libraries[]
+             *
+             * Each library normally contains:
+             *
+             * name
+             * url
+             *
+             * rules
+             *
+             * We only download libraries that are applicable to
+             * Windows and that are missing locally.
+             */
+
+            if (!root.TryGetProperty(
+                    "libraries",
+                    out JsonElement libraries))
+            {
+                WriteLog(
+                    "Fabric JSON does not contain a libraries array.");
+
+                return;
+            }
+
+            foreach (JsonElement library in
+                     libraries.EnumerateArray())
+            {
+                try
+                {
+                    if (!library.TryGetProperty(
+                            "name",
+                            out JsonElement nameElement))
+                    {
+                        continue;
+                    }
+
+                    string coordinate =
+                        nameElement.GetString() ?? "";
+
+                    if (string.IsNullOrWhiteSpace(coordinate))
+                        continue;
+
+                    if (!IsLibraryAllowedOnCurrentPlatform(
+                            library))
+                    {
+                        continue;
+                    }
+
+                    string? url =
+                        null;
+
+                    if (library.TryGetProperty(
+                            "url",
+                            out JsonElement urlElement) &&
+                        urlElement.ValueKind ==
+                        JsonValueKind.String)
+                    {
+                        url =
+                            urlElement.GetString();
+                    }
+
+                    string relativePath =
+                        MavenCoordinateToPath(
+                            coordinate);
+
+                    string destination =
+                        Path.Combine(
+                            _gamePath,
+                            "libraries",
+                            relativePath);
+
+                    if (File.Exists(destination) &&
+                        new FileInfo(destination).Length > 0)
+                    {
+                        WriteLog(
+                            $"Dependency already exists: {coordinate}");
+
+                        continue;
+                    }
+
+                    string repository =
+                        string.IsNullOrWhiteSpace(url)
+                            ? "https://maven.fabricmc.net/"
+                            : EnsureTrailingSlash(url);
+
+                    string downloadUrl =
+                        repository +
+                        relativePath.Replace(
+                            '\\',
+                            '/');
+
+                    WriteLog(
+                        $"Missing Fabric dependency: {coordinate}");
+
+                    WriteLog(
+                        $"Downloading dependency: {downloadUrl}");
+
+                    StatusText.Text =
+                        $"Downloading Fabric dependency: {coordinate}";
+
+                    await DownloadFileAsync(
+                        downloadUrl,
+                        destination);
+
+                    if (!File.Exists(destination) ||
+                        new FileInfo(destination).Length == 0)
+                    {
+                        throw new IOException(
+                            $"Dependency download failed: {coordinate}");
+                    }
+
+                    WriteLog(
+                        $"Dependency installed: {destination}");
+                }
+                catch (Exception ex)
+                {
+                    WriteException(
+                        "FABRIC DEPENDENCY ERROR",
+                        ex);
+
+                    throw;
+                }
+            }
+
+            /*
+             * Explicit ASM verification.
+             *
+             * Fabric 0.19.x requires ASM on the runtime classpath.
+             */
+            if (!VerifyAsmJars())
+            {
+                throw new InvalidOperationException(
+                    "Fabric dependencies were processed, but ASM is still missing. " +
+                    "The required org.ow2.asm classes were not found.");
+            }
+
+            WriteLog(
+                "===== FABRIC DEPENDENCY VALIDATION COMPLETE =====");
+        }
+
+        private static string EnsureTrailingSlash(
+            string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return "";
+
+            return url.EndsWith(
+                "/",
+                StringComparison.Ordinal)
+                ? url
+                : url + "/";
+        }
+
+        private static string MavenCoordinateToPath(
+            string coordinate)
+        {
+            /*
+             * Supports:
+             *
+             * group:artifact:version
+             *
+             * and:
+             *
+             * group:artifact:version:classifier
+             */
+
+            string[] parts =
+                coordinate.Split(
+                    ':',
+                    StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length < 3)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid Maven coordinate: {coordinate}");
+            }
+
+            string group =
+                parts[0];
+
+            string artifact =
+                parts[1];
+
+            string version =
+                parts[2];
+
+            string classifier =
+                parts.Length >= 4
+                    ? parts[3]
+                    : "";
+
+            string groupPath =
+                group.Replace(
+                    '.',
+                    Path.DirectorySeparatorChar);
+
+            string filename =
+                artifact +
+                "-" +
+                version;
+
+            if (!string.IsNullOrWhiteSpace(
+                    classifier))
+            {
+                filename +=
+                    "-" +
+                    classifier;
+            }
+
+            filename += ".jar";
+
+            return Path.Combine(
+                groupPath,
+                artifact,
+                version,
+                filename);
+        }
+
+        private static bool IsLibraryAllowedOnCurrentPlatform(
+            JsonElement library)
+        {
+            if (!library.TryGetProperty(
+                    "rules",
+                    out JsonElement rules))
+            {
+                return true;
+            }
+
+            bool allowed = true;
+
+            foreach (JsonElement rule in
+                     rules.EnumerateArray())
+            {
+                if (!rule.TryGetProperty(
+                        "action",
+                        out JsonElement actionElement))
+                {
+                    continue;
+                }
+
+                string action =
+                    actionElement.GetString() ?? "";
+
+                if (!rule.TryGetProperty(
+                        "os",
+                        out JsonElement os))
+                {
+                    continue;
+                }
+
+                string? name =
+                    null;
+
+                if (os.TryGetProperty(
+                        "name",
+                        out JsonElement nameElement))
+                {
+                    name =
+                        nameElement.GetString();
+                }
+
+                bool matches =
+                    string.Equals(
+                        name,
+                        "windows",
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (!matches)
+                    continue;
+
+                if (string.Equals(
+                        action,
+                        "allow",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    allowed = true;
+                }
+                else if (string.Equals(
+                        action,
+                        "disallow",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    allowed = false;
+                }
+            }
+
+            return allowed;
+        }
+
+        private bool VerifyAsmJars()
+        {
+            try
+            {
+                string asmRoot =
+                    Path.Combine(
+                        _gamePath,
+                        "libraries",
+                        "org",
+                        "ow2",
+                        "asm");
+
+                WriteLog(
+                    $"Checking ASM directory: {asmRoot}");
+
+                if (!Directory.Exists(asmRoot))
+                {
+                    WriteLog(
+                        "ASM directory does not exist.");
+
+                    return false;
+                }
+
+                string[] jars =
+                    Directory.GetFiles(
+                        asmRoot,
+                        "*.jar",
+                        SearchOption.AllDirectories);
+
+                if (jars.Length == 0)
+                {
+                    WriteLog(
+                        "No ASM JAR files were found.");
+
+                    return false;
+                }
+
+                bool classReaderFound = false;
+
+                foreach (string jar in jars)
+                {
+                    WriteLog(
+                        $"Inspecting ASM JAR: {jar}");
+
+                    try
+                    {
+                        using FileStream stream =
+                            new FileStream(
+                                jar,
+                                FileMode.Open,
+                                FileAccess.Read,
+                                FileShare.Read);
+
+                        using ZipArchive archive =
+                            new ZipArchive(
+                                stream,
+                                ZipArchiveMode.Read);
+
+                        ZipArchiveEntry? classReader =
+                            archive.GetEntry(
+                                "org/objectweb/asm/ClassReader.class");
+
+                        if (classReader != null)
+                        {
+                            WriteLog(
+                                $"FOUND org/objectweb/asm/ClassReader.class in {jar}");
+
+                            classReaderFound = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(
+                            $"Could not inspect {jar}: {ex.Message}");
+                    }
+                }
+
+                if (!classReaderFound)
+                {
+                    WriteLog(
+                        "ASM ClassReader.class was not found.");
+
+                    return false;
+                }
+
+                WriteLog(
+                    "ASM verification successful.");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "ASM VERIFICATION ERROR",
+                    ex);
+
+                return false;
+            }
         }
 
         private bool IsFabricInstallationUsable(
@@ -907,14 +1338,6 @@ namespace TopuLauncher
 
                     WriteLog(
                         ex.Message);
-
-                    /*
-                     * IMPORTANT:
-                     *
-                     * Performance mods are OPTIONAL.
-                     * A broken Sodium download must NEVER
-                     * prevent Minecraft itself from launching.
-                     */
                 }
             }
 
@@ -1021,10 +1444,6 @@ namespace TopuLauncher
                 return true;
             }
 
-            /*
-             * Remove stale .download files from an earlier
-             * interrupted launch.
-             */
             DeleteStaleDownloadFiles(
                 destination);
 
@@ -1159,9 +1578,6 @@ namespace TopuLauncher
                     directory);
             }
 
-            /*
-             * Use a unique temporary filename.
-             */
             string temporary =
                 Path.Combine(
                     directory ?? _gamePath,
@@ -1179,9 +1595,6 @@ namespace TopuLauncher
                 WriteLog(
                     $"Temporary file: {temporary}");
 
-                /*
-                 * First download the complete response.
-                 */
                 using HttpResponseMessage httpResponse =
                     await Http.GetAsync(
                         url,
@@ -1192,9 +1605,6 @@ namespace TopuLauncher
                 await using Stream input =
                     await httpResponse.Content.ReadAsStreamAsync();
 
-                /*
-                 * Keep the FileStream alive only while copying.
-                 */
                 await using (
                     FileStream output =
                         new FileStream(
@@ -1211,10 +1621,6 @@ namespace TopuLauncher
                     await output.FlushAsync();
                 }
 
-                /*
-                 * The stream is DEFINITELY closed here.
-                 */
-
                 if (!File.Exists(temporary))
                 {
                     throw new IOException(
@@ -1230,9 +1636,6 @@ namespace TopuLauncher
                         $"Downloaded file is empty: {temporary}");
                 }
 
-                /*
-                 * Delete old destination first.
-                 */
                 if (File.Exists(destination))
                 {
                     try
@@ -1247,9 +1650,6 @@ namespace TopuLauncher
                     }
                 }
 
-                /*
-                 * Move the complete download into place.
-                 */
                 File.Move(
                     temporary,
                     destination);
@@ -1265,9 +1665,6 @@ namespace TopuLauncher
             }
             catch
             {
-                /*
-                 * Delete only this request's temporary file.
-                 */
                 try
                 {
                     if (File.Exists(temporary))
@@ -1800,21 +2197,6 @@ namespace TopuLauncher
                     return false;
                 }
 
-                /*
-                 * IMPORTANT:
-                 *
-                 * The Fabric loader JAR is normally stored in:
-                 *
-                 * libraries/net/fabricmc/fabric-loader/<loader-version>/
-                 *
-                 * It is NOT required to also exist as:
-                 *
-                 * versions/<fabricVersion>/<fabricVersion>.jar
-                 *
-                 * The old validator incorrectly required that second file,
-                 * which caused a valid Fabric installation to be rejected.
-                 */
-
                 string fabricJson =
                     Path.Combine(
                         fabricDirectory,
@@ -1846,6 +2228,14 @@ namespace TopuLauncher
 
                 WriteLog(
                     $"Fabric loader library JAR exists: {loaderJar}");
+
+                if (!VerifyAsmJars())
+                {
+                    WriteLog(
+                        "ERROR: ASM dependencies are missing.");
+
+                    return false;
+                }
 
                 WriteLog(
                     "===== INSTALLATION VALIDATION COMPLETE =====");
@@ -2338,19 +2728,6 @@ namespace TopuLauncher
                 _minecraftProcess =
                     process;
 
-                /*
-                 * CRITICAL:
-                 *
-                 * Capture Minecraft's actual console output.
-                 *
-                 * Previously the launcher only knew:
-                 *
-                 *     exit code = 1
-                 *
-                 * Now the real exception/error will be written
-                 * to topu-minecraft.log.
-                 */
-
                 try
                 {
                     process.StartInfo.RedirectStandardOutput =
@@ -2418,9 +2795,6 @@ namespace TopuLauncher
                 WriteLog(
                     $"Minecraft started. PID={process.Id}");
 
-                /*
-                 * Begin asynchronous stdout/stderr reading.
-                 */
                 try
                 {
                     process.BeginOutputReadLine();
@@ -2512,10 +2886,6 @@ namespace TopuLauncher
                         }
                     });
 
-                /*
-                 * Give asynchronous output handlers a moment to
-                 * finish writing the final crash lines.
-                 */
                 try
                 {
                     await Task.Delay(
@@ -2684,4 +3054,3 @@ namespace TopuLauncher
         }
     }
 }
-
