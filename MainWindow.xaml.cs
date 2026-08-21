@@ -31,6 +31,8 @@ namespace TopuLauncher
         private readonly string _configPath;
         private readonly string _logPath;
 
+        private readonly object _logLock = new object();
+
         private const string DefaultVersion = "1.21.1";
 
         private static readonly string[] SupportedVersions =
@@ -90,6 +92,8 @@ namespace TopuLauncher
                     AllowAutoRedirect = true
                 });
 
+            client.Timeout = TimeSpan.FromMinutes(30);
+
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "TopuClient/1.0");
 
@@ -99,8 +103,6 @@ namespace TopuLauncher
         // ============================================================
         // LOGGING
         // ============================================================
-
-        private readonly object _logLock = new object();
 
         private void WriteLog(string message)
         {
@@ -160,7 +162,7 @@ namespace TopuLauncher
             string prefix,
             string? text)
         {
-            if (string.IsNullOrEmpty(text))
+            if (string.IsNullOrWhiteSpace(text))
                 return;
 
             try
@@ -199,8 +201,7 @@ namespace TopuLauncher
                 UsernameInput.Text = username;
 
                 _session =
-                    MSession.CreateOfflineSession(
-                        username);
+                    MSession.CreateOfflineSession(username);
 
                 WriteLog(
                     $"Loaded username: {username}");
@@ -213,8 +214,7 @@ namespace TopuLauncher
             }
         }
 
-        private void SaveUsername(
-            string username)
+        private void SaveUsername(string username)
         {
             try
             {
@@ -254,8 +254,7 @@ namespace TopuLauncher
             object sender,
             RoutedEventArgs e)
         {
-            WindowState =
-                WindowState.Minimized;
+            WindowState = WindowState.Minimized;
         }
 
         private void Close_Click(
@@ -310,26 +309,15 @@ namespace TopuLauncher
 
             Brush inactive =
                 new SolidColorBrush(
-                    Color.FromRgb(
-                        136,
-                        136,
-                        136));
+                    Color.FromRgb(136, 136, 136));
 
             Brush active =
                 new SolidColorBrush(
-                    Color.FromRgb(
-                        0,
-                        255,
-                        136));
+                    Color.FromRgb(0, 255, 136));
 
-            TabLaunchBtn.Foreground =
-                inactive;
-
-            TabProfilesBtn.Foreground =
-                inactive;
-
-            TabAccountsBtn.Foreground =
-                inactive;
+            TabLaunchBtn.Foreground = inactive;
+            TabProfilesBtn.Foreground = inactive;
+            TabAccountsBtn.Foreground = inactive;
 
             TabLaunchBtn.BorderThickness =
                 new Thickness(0);
@@ -340,15 +328,10 @@ namespace TopuLauncher
             TabAccountsBtn.BorderThickness =
                 new Thickness(0);
 
-            button.Foreground =
-                active;
+            button.Foreground = active;
 
             button.BorderThickness =
-                new Thickness(
-                    0,
-                    0,
-                    0,
-                    2);
+                new Thickness(0, 0, 0, 2);
 
             switch (tab)
             {
@@ -539,13 +522,13 @@ namespace TopuLauncher
                     Uri.EscapeDataString(query) +
                     "&facets=%5B%5B%22project_type%3Amod%22%5D%5D";
 
-                using HttpResponseMessage httpResponse =
+                using HttpResponseMessage response =
                     await Http.GetAsync(url);
 
-                httpResponse.EnsureSuccessStatusCode();
+                response.EnsureSuccessStatusCode();
 
                 string json =
-                    await httpResponse.Content.ReadAsStringAsync();
+                    await response.Content.ReadAsStringAsync();
 
                 using JsonDocument doc =
                     JsonDocument.Parse(json);
@@ -561,8 +544,7 @@ namespace TopuLauncher
                     return;
                 }
 
-                JsonElement hit =
-                    hits[0];
+                JsonElement hit = hits[0];
 
                 string projectId =
                     hit.GetProperty("project_id")
@@ -613,13 +595,13 @@ namespace TopuLauncher
                 Uri.EscapeDataString(minecraftVersion) +
                 "%22%5D";
 
-            using HttpResponseMessage httpResponse =
+            using HttpResponseMessage response =
                 await Http.GetAsync(url);
 
-            httpResponse.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
 
             string json =
-                await httpResponse.Content.ReadAsStringAsync();
+                await response.Content.ReadAsStringAsync();
 
             using JsonDocument doc =
                 JsonDocument.Parse(json);
@@ -627,22 +609,31 @@ namespace TopuLauncher
             JsonElement versions =
                 doc.RootElement;
 
-            if (versions.ValueKind !=
-                JsonValueKind.Array ||
+            if (versions.ValueKind != JsonValueKind.Array ||
                 versions.GetArrayLength() == 0)
             {
                 throw new InvalidOperationException(
                     $"{title} has no compatible Fabric build for {minecraftVersion}.");
             }
 
-            JsonElement selected =
-                versions[0];
+            JsonElement? selectedFile = null;
 
-            JsonElement files =
-                selected.GetProperty("files");
+            foreach (JsonElement version in
+                     versions.EnumerateArray())
+            {
+                if (!version.TryGetProperty(
+                        "files",
+                        out JsonElement files))
+                {
+                    continue;
+                }
 
-            JsonElement? selectedFile =
-                FindPrimaryJar(files);
+                selectedFile =
+                    FindPrimaryJar(files);
+
+                if (selectedFile != null)
+                    break;
+            }
 
             if (selectedFile == null)
             {
@@ -669,8 +660,7 @@ namespace TopuLauncher
                     _gamePath,
                     "mods");
 
-            Directory.CreateDirectory(
-                modsFolder);
+            Directory.CreateDirectory(modsFolder);
 
             string destination =
                 Path.Combine(
@@ -689,7 +679,7 @@ namespace TopuLauncher
         }
 
         // ============================================================
-        // FABRIC
+        // FABRIC INSTALLATION
         // ============================================================
 
         private async Task<string> InstallFabricAsync(
@@ -700,7 +690,19 @@ namespace TopuLauncher
                 $"Installing Fabric for Minecraft {minecraftVersion}...";
 
             WriteLog(
-                $"Installing Fabric for Minecraft {minecraftVersion}.");
+                "===== FABRIC INSTALLATION START =====");
+
+            WriteLog(
+                $"Preparing Fabric for Minecraft {minecraftVersion}.");
+
+            /*
+             * CmlLib's FabricInstaller installs the Fabric profile,
+             * version JSON and required Fabric libraries.
+             *
+             * We intentionally DO NOT require a guessed loader-JAR
+             * path here. That was the cause of the previous false
+             * "Fabric installation failed" error.
+             */
 
             FabricInstaller fabricInstaller =
                 new FabricInstaller(Http);
@@ -720,105 +722,184 @@ namespace TopuLauncher
             WriteLog(
                 $"Fabric installer returned: {fabricVersionName}");
 
-            await EnsureFabricLoaderJarAsync(
-                fabricVersionName);
+            // Fabric's profile JSON is not enough by itself. The JSON can
+            // reference loader/ASM/intermediary JARs that are not present
+            // yet. Download every library explicitly referenced by the
+            // Fabric profile before CmlLib builds the process.
+            await EnsureFabricLibrariesAsync(
+                fabricVersionName,
+                minecraftPath);
 
-            if (!IsFabricInstallationUsable(
-                    fabricVersionName))
+            bool valid =
+                ValidateFabricInstallation(
+                    fabricVersionName,
+                    minecraftPath);
+
+            if (!valid)
             {
-                WriteLog(
-                    "Fabric installation is incomplete after the first install.");
-
-                WriteLog(
-                    "Retrying Fabric installation once.");
-
-                string brokenDirectory =
-                    Path.Combine(
-                        _gamePath,
-                        "versions",
-                        fabricVersionName);
-
-                try
-                {
-                    if (Directory.Exists(brokenDirectory))
-                    {
-                        Directory.Delete(
-                            brokenDirectory,
-                            true);
-
-                        WriteLog(
-                            $"Removed incomplete Fabric directory: {brokenDirectory}");
-                    }
-                }
-                catch (Exception cleanupEx)
-                {
-                    WriteException(
-                        "FABRIC CLEANUP ERROR",
-                        cleanupEx);
-                }
-
-                fabricVersionName =
-                    await fabricInstaller.Install(
-                        minecraftVersion,
-                        minecraftPath);
-
-                if (string.IsNullOrWhiteSpace(
-                        fabricVersionName))
-                {
-                    throw new InvalidOperationException(
-                        "Fabric installer returned an empty version name on retry.");
-                }
-
-                WriteLog(
-                    $"Fabric installer retry returned: {fabricVersionName}");
-
-                await EnsureFabricLoaderJarAsync(
-                    fabricVersionName);
-
-                if (!IsFabricInstallationUsable(
-                        fabricVersionName))
-                {
-                    throw new InvalidOperationException(
-                        "Fabric installation completed but the required Fabric files were not created.");
-                }
+                throw new InvalidOperationException(
+                    "Fabric installer returned successfully, but the Fabric version JSON could not be verified.");
             }
 
-            /*
-             * NEW:
-             *
-             * CmlLib generated ASM entries in the classpath, but
-             * the physical ASM JARs were missing from:
-             *
-             * libraries/org/ow2/asm/
-             *
-             * Read the Fabric JSON and explicitly install all
-             * Maven dependencies required by Fabric.
-             */
-            await EnsureFabricDependenciesAsync(
-                fabricVersionName);
+            WriteLog(
+                "Fabric installation verified.");
 
             WriteLog(
-                $"Fabric installed and verified: {fabricVersionName}");
+                "===== FABRIC INSTALLATION COMPLETE =====");
 
             return fabricVersionName;
         }
 
-        // ============================================================
-        // FABRIC DEPENDENCY REPAIR
-        // ============================================================
-
-        private async Task EnsureFabricDependenciesAsync(
-            string fabricVersionName)
+        private bool ValidateFabricInstallation(
+            string fabricVersionName,
+            MinecraftPath minecraftPath)
         {
-            WriteLog(
-                "===== FABRIC DEPENDENCY VALIDATION =====");
+            try
+            {
+                WriteLog(
+                    "===== FABRIC VALIDATION =====");
 
-            string fabricJsonPath =
-                Path.Combine(
-                    _gamePath,
-                    "versions",
-                    fabricVersionName,
-                    fabricVersionName + ".json");
+                string versionsDirectory =
+                    Path.Combine(
+                        _gamePath,
+                        "versions");
+
+                string fabricDirectory =
+                    Path.Combine(
+                        versionsDirectory,
+                        fabricVersionName);
+
+                WriteLog(
+                    $"Fabric directory: {fabricDirectory}");
+
+                if (!Directory.Exists(fabricDirectory))
+                {
+                    WriteLog(
+                        "Fabric version directory does not exist.");
+
+                    return false;
+                }
+
+                string fabricJson =
+                    Path.Combine(
+                        fabricDirectory,
+                        fabricVersionName + ".json");
+
+                WriteLog(
+                    $"Fabric JSON: {fabricJson}");
+
+                if (!File.Exists(fabricJson))
+                {
+                    WriteLog(
+                        "Fabric version JSON does not exist.");
+
+                    return false;
+                }
+
+                string json =
+                    File.ReadAllText(fabricJson);
+
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    WriteLog(
+                        "Fabric version JSON is empty.");
+
+                    return false;
+                }
+
+                using JsonDocument document =
+                    JsonDocument.Parse(json);
+
+                JsonElement root =
+                    document.RootElement;
+
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    WriteLog(
+                        "Fabric version JSON is not a JSON object.");
+
+                    return false;
+                }
+
+                /*
+                 * These are the important things we can verify
+                 * without assuming where CmlLib stores the loader JAR.
+                 */
+
+                bool hasId =
+                    root.TryGetProperty(
+                        "id",
+                        out JsonElement idElement);
+
+                bool hasLibraries =
+                    root.TryGetProperty(
+                        "libraries",
+                        out JsonElement librariesElement);
+
+                if (hasId)
+                {
+                    WriteLog(
+                        $"Fabric JSON id: {idElement.GetString()}");
+                }
+
+                if (!hasLibraries)
+                {
+                    WriteLog(
+                        "WARNING: Fabric JSON has no libraries property.");
+                }
+                else if (librariesElement.ValueKind ==
+                         JsonValueKind.Array)
+                {
+                    WriteLog(
+                        $"Fabric JSON library entries: {librariesElement.GetArrayLength()}");
+                }
+
+                /*
+                 * The version JSON itself is the authoritative profile
+                 * created by the Fabric installer. Do not reject the
+                 * installation merely because our old recursive JAR
+                 * search could not find a filename.
+                 */
+
+                WriteLog(
+                    "Fabric version JSON exists and is valid.");
+
+                WriteLog(
+                    "===== FABRIC VALIDATION COMPLETE =====");
+
+                return true;
+            }
+            catch (JsonException ex)
+            {
+                WriteException(
+                    "FABRIC JSON PARSE ERROR",
+                    ex);
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "FABRIC VALIDATION ERROR",
+                    ex);
+
+                return false;
+            }
+        }
+
+        // ============================================================
+        // FABRIC LIBRARY REPAIR
+        // ============================================================
+
+        private async Task EnsureFabricLibrariesAsync(
+            string fabricVersionName,
+            MinecraftPath minecraftPath)
+        {
+            string fabricJsonPath = Path.Combine(
+                _gamePath,
+                "versions",
+                fabricVersionName,
+                fabricVersionName + ".json");
 
             if (!File.Exists(fabricJsonPath))
             {
@@ -827,462 +908,262 @@ namespace TopuLauncher
                     fabricJsonPath);
             }
 
-            string json =
-                await File.ReadAllTextAsync(
-                    fabricJsonPath);
+            WriteLog("===== FABRIC LIBRARY REPAIR START =====");
+            WriteLog($"Reading Fabric profile: {fabricJsonPath}");
 
-            using JsonDocument document =
-                JsonDocument.Parse(json);
+            using JsonDocument document = JsonDocument.Parse(
+                await File.ReadAllTextAsync(fabricJsonPath));
 
-            JsonElement root =
-                document.RootElement;
+            JsonElement root = document.RootElement;
 
-            /*
-             * Fabric version JSON can contain libraries in:
-             *
-             * libraries[]
-             *
-             * Each library normally contains:
-             *
-             * name
-             * url
-             *
-             * rules
-             *
-             * We only download libraries that are applicable to
-             * Windows and that are missing locally.
-             */
-
-            if (!root.TryGetProperty(
-                    "libraries",
-                    out JsonElement libraries))
+            if (!root.TryGetProperty("libraries", out JsonElement libraries) ||
+                libraries.ValueKind != JsonValueKind.Array)
             {
-                WriteLog(
-                    "Fabric JSON does not contain a libraries array.");
-
-                return;
+                throw new InvalidOperationException(
+                    "Fabric profile contains no libraries array.");
             }
 
-            foreach (JsonElement library in
-                     libraries.EnumerateArray())
+            int total = 0;
+            int downloaded = 0;
+            int alreadyPresent = 0;
+
+            foreach (JsonElement library in libraries.EnumerateArray())
             {
+                if (!library.TryGetProperty("name", out JsonElement nameElement))
+                    continue;
+
+                string coordinate = nameElement.GetString() ?? "";
+                if (string.IsNullOrWhiteSpace(coordinate))
+                    continue;
+
+                string[] parts = coordinate.Split(':');
+                if (parts.Length < 3)
+                {
+                    WriteLog($"Skipping invalid Fabric library coordinate: {coordinate}");
+                    continue;
+                }
+
+                string group = parts[0];
+                string artifact = parts[1];
+                string version = parts[2];
+
+                string relativePath =
+                    group.Replace('.', Path.DirectorySeparatorChar) +
+                    Path.DirectorySeparatorChar + artifact +
+                    Path.DirectorySeparatorChar + version +
+                    Path.DirectorySeparatorChar + artifact + "-" + version + ".jar";
+
+                string destination = Path.Combine(
+                    _gamePath,
+                    "libraries",
+                    relativePath);
+
+                total++;
+
+                if (File.Exists(destination) && new FileInfo(destination).Length > 0)
+                {
+                    alreadyPresent++;
+                    continue;
+                }
+
+                string? url = GetLibraryDownloadUrl(library, coordinate, relativePath);
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    WriteLog($"WARNING: No download URL found for {coordinate}");
+                    continue;
+                }
+
+                WriteLog($"Missing Fabric library: {coordinate}");
+                WriteLog($"Library URL: {url}");
+
+                StatusText.Text = $"Downloading Fabric library: {artifact}-{version}.jar";
+
                 try
                 {
-                    if (!library.TryGetProperty(
-                            "name",
-                            out JsonElement nameElement))
-                    {
-                        continue;
-                    }
-
-                    string coordinate =
-                        nameElement.GetString() ?? "";
-
-                    if (string.IsNullOrWhiteSpace(coordinate))
-                        continue;
-
-                    if (!IsLibraryAllowedOnCurrentPlatform(
-                            library))
-                    {
-                        continue;
-                    }
-
-                    string? url =
-                        null;
-
-                    if (library.TryGetProperty(
-                            "url",
-                            out JsonElement urlElement) &&
-                        urlElement.ValueKind ==
-                        JsonValueKind.String)
-                    {
-                        url =
-                            urlElement.GetString();
-                    }
-
-                    string relativePath =
-                        MavenCoordinateToPath(
-                            coordinate);
-
-                    string destination =
-                        Path.Combine(
-                            _gamePath,
-                            "libraries",
-                            relativePath);
-
-                    if (File.Exists(destination) &&
-                        new FileInfo(destination).Length > 0)
-                    {
-                        WriteLog(
-                            $"Dependency already exists: {coordinate}");
-
-                        continue;
-                    }
-
-                    string repository =
-                        string.IsNullOrWhiteSpace(url)
-                            ? "https://maven.fabricmc.net/"
-                            : EnsureTrailingSlash(url);
-
-                    string downloadUrl =
-                        repository +
-                        relativePath.Replace(
-                            '\\',
-                            '/');
-
-                    WriteLog(
-                        $"Missing Fabric dependency: {coordinate}");
-
-                    WriteLog(
-                        $"Downloading dependency: {downloadUrl}");
-
-                    StatusText.Text =
-                        $"Downloading Fabric dependency: {coordinate}";
-
-                    await DownloadFileAsync(
-                        downloadUrl,
-                        destination);
+                    await DownloadFileAsync(url, destination);
 
                     if (!File.Exists(destination) ||
                         new FileInfo(destination).Length == 0)
                     {
                         throw new IOException(
-                            $"Dependency download failed: {coordinate}");
+                            $"Fabric library download produced no file: {destination}");
                     }
 
-                    WriteLog(
-                        $"Dependency installed: {destination}");
+                    downloaded++;
+                    WriteLog($"Fabric library installed: {destination}");
                 }
                 catch (Exception ex)
                 {
                     WriteException(
-                        "FABRIC DEPENDENCY ERROR",
+                        $"FABRIC LIBRARY DOWNLOAD FAILED: {coordinate}",
                         ex);
-
                     throw;
                 }
             }
 
-            /*
-             * Explicit ASM verification.
-             *
-             * Fabric 0.19.x requires ASM on the runtime classpath.
-             */
-            if (!VerifyAsmJars())
+            // The loader JAR is the critical file from the error you reported.
+            // Check it directly so we never reach BuildProcessAsync with a
+            // Fabric profile that points at a nonexistent loader JAR.
+            string loaderJar = FindFabricLoaderJar(fabricVersionName);
+
+            // CmlLib/Fabric's generated profile can expect the loader launch
+            // JAR in the profile's versions directory. If the loader exists
+            // in libraries but that profile JAR is absent, create the exact
+            // file the Fabric profile/classpath is asking for.
+            string versionJar = Path.Combine(
+                _gamePath,
+                "versions",
+                fabricVersionName,
+                fabricVersionName + ".jar");
+
+            if (!File.Exists(versionJar) || new FileInfo(versionJar).Length == 0)
             {
-                throw new InvalidOperationException(
-                    "Fabric dependencies were processed, but ASM is still missing. " +
-                    "The required org.ow2.asm classes were not found.");
+                if (!File.Exists(loaderJar) || new FileInfo(loaderJar).Length == 0)
+                {
+                    throw new FileNotFoundException(
+                        "Fabric loader JAR is still missing after library repair.",
+                        loaderJar);
+                }
+
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(versionJar)!);
+
+                File.Copy(
+                    loaderJar,
+                    versionJar,
+                    true);
+
+                WriteLog($"Created Fabric profile launch JAR: {versionJar}");
             }
 
-            WriteLog(
-                "===== FABRIC DEPENDENCY VALIDATION COMPLETE =====");
+            WriteLog($"Fabric loader JAR: {loaderJar}");
+            WriteLog($"Fabric profile launch JAR: {versionJar}");
+
+            WriteLog($"Fabric libraries total: {total}");
+            WriteLog($"Fabric libraries already present: {alreadyPresent}");
+            WriteLog($"Fabric libraries downloaded: {downloaded}");
+            WriteLog("===== FABRIC LIBRARY REPAIR COMPLETE =====");
         }
 
-        private static string EnsureTrailingSlash(
-            string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-                return "";
-
-            return url.EndsWith(
-                "/",
-                StringComparison.Ordinal)
-                ? url
-                : url + "/";
-        }
-
-        private static string MavenCoordinateToPath(
-            string coordinate)
-        {
-            /*
-             * Supports:
-             *
-             * group:artifact:version
-             *
-             * and:
-             *
-             * group:artifact:version:classifier
-             */
-
-            string[] parts =
-                coordinate.Split(
-                    ':',
-                    StringSplitOptions.RemoveEmptyEntries);
-
-            if (parts.Length < 3)
-            {
-                throw new InvalidOperationException(
-                    $"Invalid Maven coordinate: {coordinate}");
-            }
-
-            string group =
-                parts[0];
-
-            string artifact =
-                parts[1];
-
-            string version =
-                parts[2];
-
-            string classifier =
-                parts.Length >= 4
-                    ? parts[3]
-                    : "";
-
-            string groupPath =
-                group.Replace(
-                    '.',
-                    Path.DirectorySeparatorChar);
-
-            string filename =
-                artifact +
-                "-" +
-                version;
-
-            if (!string.IsNullOrWhiteSpace(
-                    classifier))
-            {
-                filename +=
-                    "-" +
-                    classifier;
-            }
-
-            filename += ".jar";
-
-            return Path.Combine(
-                groupPath,
-                artifact,
-                version,
-                filename);
-        }
-
-        private static bool IsLibraryAllowedOnCurrentPlatform(
-            JsonElement library)
-        {
-            if (!library.TryGetProperty(
-                    "rules",
-                    out JsonElement rules))
-            {
-                return true;
-            }
-
-            bool allowed = true;
-
-            foreach (JsonElement rule in
-                     rules.EnumerateArray())
-            {
-                if (!rule.TryGetProperty(
-                        "action",
-                        out JsonElement actionElement))
-                {
-                    continue;
-                }
-
-                string action =
-                    actionElement.GetString() ?? "";
-
-                if (!rule.TryGetProperty(
-                        "os",
-                        out JsonElement os))
-                {
-                    continue;
-                }
-
-                string? name =
-                    null;
-
-                if (os.TryGetProperty(
-                        "name",
-                        out JsonElement nameElement))
-                {
-                    name =
-                        nameElement.GetString();
-                }
-
-                bool matches =
-                    string.Equals(
-                        name,
-                        "windows",
-                        StringComparison.OrdinalIgnoreCase);
-
-                if (!matches)
-                    continue;
-
-                if (string.Equals(
-                        action,
-                        "allow",
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    allowed = true;
-                }
-                else if (string.Equals(
-                        action,
-                        "disallow",
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    allowed = false;
-                }
-            }
-
-            return allowed;
-        }
-
-        private bool VerifyAsmJars()
+        private string? GetLibraryDownloadUrl(
+            JsonElement library,
+            string coordinate,
+            string relativePath)
         {
             try
             {
-                string asmRoot =
-                    Path.Combine(
-                        _gamePath,
-                        "libraries",
-                        "org",
-                        "ow2",
-                        "asm");
-
-                WriteLog(
-                    $"Checking ASM directory: {asmRoot}");
-
-                if (!Directory.Exists(asmRoot))
+                if (library.TryGetProperty("downloads", out JsonElement downloads) &&
+                    downloads.ValueKind == JsonValueKind.Object &&
+                    downloads.TryGetProperty("artifact", out JsonElement artifact) &&
+                    artifact.ValueKind == JsonValueKind.Object &&
+                    artifact.TryGetProperty("url", out JsonElement artifactUrl))
                 {
-                    WriteLog(
-                        "ASM directory does not exist.");
-
-                    return false;
+                    string? direct = artifactUrl.GetString();
+                    if (!string.IsNullOrWhiteSpace(direct))
+                        return direct;
                 }
 
-                string[] jars =
-                    Directory.GetFiles(
-                        asmRoot,
-                        "*.jar",
-                        SearchOption.AllDirectories);
-
-                if (jars.Length == 0)
+                if (library.TryGetProperty("url", out JsonElement urlElement))
                 {
-                    WriteLog(
-                        "No ASM JAR files were found.");
-
-                    return false;
+                    string? baseUrl = urlElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(baseUrl))
+                        return baseUrl.TrimEnd('/') + "/" + relativePath.Replace('\\', '/');
                 }
 
-                bool classReaderFound = false;
-
-                foreach (string jar in jars)
+                // Fabric's Maven repository is the correct fallback for
+                // net.fabricmc libraries and also covers intermediary.
+                if (coordinate.StartsWith("net.fabricmc:", StringComparison.OrdinalIgnoreCase))
                 {
-                    WriteLog(
-                        $"Inspecting ASM JAR: {jar}");
-
-                    try
-                    {
-                        using FileStream stream =
-                            new FileStream(
-                                jar,
-                                FileMode.Open,
-                                FileAccess.Read,
-                                FileShare.Read);
-
-                        using ZipArchive archive =
-                            new ZipArchive(
-                                stream,
-                                ZipArchiveMode.Read);
-
-                        ZipArchiveEntry? classReader =
-                            archive.GetEntry(
-                                "org/objectweb/asm/ClassReader.class");
-
-                        if (classReader != null)
-                        {
-                            WriteLog(
-                                $"FOUND org/objectweb/asm/ClassReader.class in {jar}");
-
-                            classReaderFound = true;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteLog(
-                            $"Could not inspect {jar}: {ex.Message}");
-                    }
+                    return "https://maven.fabricmc.net/" +
+                           relativePath.Replace('\\', '/');
                 }
 
-                if (!classReaderFound)
-                {
-                    WriteLog(
-                        "ASM ClassReader.class was not found.");
-
-                    return false;
-                }
-
-                WriteLog(
-                    "ASM verification successful.");
-
-                return true;
+                return "https://libraries.minecraft.net/" +
+                       relativePath.Replace('\\', '/');
             }
-            catch (Exception ex)
+            catch
             {
-                WriteException(
-                    "ASM VERIFICATION ERROR",
-                    ex);
-
-                return false;
+                return null;
             }
         }
 
-        private bool IsFabricInstallationUsable(
-            string fabricVersionName)
+        private string FindFabricLoaderJar(string fabricVersionName)
         {
-            try
+            string versionsPath = Path.Combine(
+                _gamePath,
+                "versions",
+                fabricVersionName,
+                fabricVersionName + ".jar");
+
+            if (File.Exists(versionsPath) && new FileInfo(versionsPath).Length > 0)
+                return versionsPath;
+
+            string[] candidates =
             {
-                string fabricDirectory =
-                    Path.Combine(
-                        _gamePath,
-                        "versions",
-                        fabricVersionName);
+                Path.Combine(
+                    _gamePath,
+                    "libraries",
+                    "net",
+                    "fabricmc",
+                    "fabric-loader",
+                    ExtractFabricLoaderVersion(fabricVersionName),
+                    "fabric-loader-" + ExtractFabricLoaderVersion(fabricVersionName) + ".jar"),
 
-                string fabricJson =
-                    Path.Combine(
-                        fabricDirectory,
-                        fabricVersionName + ".json");
+                Path.Combine(
+                    _gamePath,
+                    "libraries",
+                    "net",
+                    "fabricmc",
+                    "fabric-loader",
+                    ExtractFabricLoaderVersion(fabricVersionName),
+                    "fabric-loader-" + ExtractFabricLoaderVersion(fabricVersionName) + ".jar")
+            };
 
-                if (!Directory.Exists(fabricDirectory))
-                {
-                    WriteLog(
-                        $"Fabric version directory does not exist: {fabricDirectory}");
-
-                    return false;
-                }
-
-                if (!File.Exists(fabricJson))
-                {
-                    WriteLog(
-                        $"Fabric version JSON does not exist: {fabricJson}");
-
-                    return false;
-                }
-
-                string loaderJar =
-                    FindFabricLoaderJar(
-                        _gamePath,
-                        fabricVersionName);
-
-                if (string.IsNullOrWhiteSpace(loaderJar))
-                {
-                    WriteLog(
-                        "Fabric loader JAR was not found under libraries.");
-
-                    return false;
-                }
-
-                return true;
-            }
-            catch (Exception ex)
+            foreach (string candidate in candidates)
             {
-                WriteException(
-                    "FABRIC INSTALLATION CHECK ERROR",
-                    ex);
-
-                return false;
+                if (File.Exists(candidate) && new FileInfo(candidate).Length > 0)
+                    return candidate;
             }
+
+            // If the version JSON uses a different loader version, find it
+            // from the Fabric library tree instead of guessing it.
+            string loaderRoot = Path.Combine(
+                _gamePath,
+                "libraries",
+                "net",
+                "fabricmc",
+                "fabric-loader");
+
+            if (Directory.Exists(loaderRoot))
+            {
+                foreach (string jar in Directory.GetFiles(
+                    loaderRoot,
+                    "fabric-loader-*.jar",
+                    SearchOption.AllDirectories))
+                {
+                    if (new FileInfo(jar).Length > 0)
+                        return jar;
+                }
+            }
+
+            return candidates[0];
+        }
+
+        private static string ExtractFabricLoaderVersion(string fabricVersionName)
+        {
+            // Normal Fabric profile names are fabric-loader-X-Y.
+            const string prefix = "fabric-loader-";
+            if (fabricVersionName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string value = fabricVersionName.Substring(prefix.Length);
+                int dash = value.LastIndexOf('-');
+                if (dash > 0)
+                    return value.Substring(0, dash);
+                return value;
+            }
+
+            return fabricVersionName;
         }
 
         // ============================================================
@@ -1297,8 +1178,7 @@ namespace TopuLauncher
                     _gamePath,
                     "mods");
 
-            Directory.CreateDirectory(
-                modsFolder);
+            Directory.CreateDirectory(modsFolder);
 
             WriteLog(
                 "===== PERFORMANCE MOD INSTALL =====");
@@ -1359,13 +1239,13 @@ namespace TopuLauncher
                 Uri.EscapeDataString(minecraftVersion) +
                 "%22%5D";
 
-            using HttpResponseMessage httpResponse =
+            using HttpResponseMessage response =
                 await Http.GetAsync(url);
 
-            httpResponse.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
 
             string json =
-                await httpResponse.Content.ReadAsStringAsync();
+                await response.Content.ReadAsStringAsync();
 
             using JsonDocument doc =
                 JsonDocument.Parse(json);
@@ -1373,8 +1253,7 @@ namespace TopuLauncher
             JsonElement versions =
                 doc.RootElement;
 
-            if (versions.ValueKind !=
-                JsonValueKind.Array ||
+            if (versions.ValueKind != JsonValueKind.Array ||
                 versions.GetArrayLength() == 0)
             {
                 WriteLog(
@@ -1383,8 +1262,7 @@ namespace TopuLauncher
                 return false;
             }
 
-            JsonElement? selectedFile =
-                null;
+            JsonElement? selectedFile = null;
 
             foreach (JsonElement version in
                      versions.EnumerateArray())
@@ -1396,16 +1274,11 @@ namespace TopuLauncher
                     continue;
                 }
 
-                JsonElement? primary =
+                selectedFile =
                     FindPrimaryJar(files);
 
-                if (primary != null)
-                {
-                    selectedFile =
-                        primary;
-
+                if (selectedFile != null)
                     break;
-                }
             }
 
             if (selectedFile == null)
@@ -1438,10 +1311,24 @@ namespace TopuLauncher
 
             if (File.Exists(destination))
             {
-                WriteLog(
-                    $"Mod already installed: {name}");
+                FileInfo existing =
+                    new FileInfo(destination);
 
-                return true;
+                if (existing.Length > 0)
+                {
+                    WriteLog(
+                        $"Mod already installed: {name}");
+
+                    return true;
+                }
+
+                try
+                {
+                    File.Delete(destination);
+                }
+                catch
+                {
+                }
             }
 
             DeleteStaleDownloadFiles(
@@ -1454,7 +1341,7 @@ namespace TopuLauncher
             if (!File.Exists(destination))
             {
                 throw new IOException(
-                    $"Mod download completed but the final file was not created: {destination}");
+                    $"Downloaded mod file was not created: {destination}");
             }
 
             FileInfo info =
@@ -1486,8 +1373,10 @@ namespace TopuLauncher
         private static JsonElement? FindPrimaryJar(
             JsonElement files)
         {
-            JsonElement? fallback =
-                null;
+            JsonElement? fallback = null;
+
+            if (files.ValueKind != JsonValueKind.Array)
+                return null;
 
             foreach (JsonElement file in
                      files.EnumerateArray())
@@ -1545,6 +1434,20 @@ namespace TopuLauncher
                 foreach (string file in
                          Directory.GetFiles(
                              directory,
+                             "." + filename + ".*.download"))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                foreach (string file in
+                         Directory.GetFiles(
+                             directory,
                              filename + ".*.download"))
                 {
                     try
@@ -1574,8 +1477,7 @@ namespace TopuLauncher
 
             if (!string.IsNullOrWhiteSpace(directory))
             {
-                Directory.CreateDirectory(
-                    directory);
+                Directory.CreateDirectory(directory);
             }
 
             string temporary =
@@ -1595,59 +1497,66 @@ namespace TopuLauncher
                 WriteLog(
                     $"Temporary file: {temporary}");
 
-                using HttpResponseMessage httpResponse =
+                using HttpResponseMessage response =
                     await Http.GetAsync(
                         url,
                         HttpCompletionOption.ResponseHeadersRead);
 
-                httpResponse.EnsureSuccessStatusCode();
+                response.EnsureSuccessStatusCode();
 
-                await using Stream input =
-                    await httpResponse.Content.ReadAsStreamAsync();
+                /*
+                 * The using blocks are deliberately scoped so BOTH
+                 * the HTTP response and input stream are disposed
+                 * before this method tries to replace/move files.
+                 */
 
-                await using (
-                    FileStream output =
-                        new FileStream(
-                            temporary,
-                            FileMode.Create,
-                            FileAccess.Write,
-                            FileShare.None,
-                            81920,
-                            FileOptions.Asynchronous))
-                {
-                    await input.CopyToAsync(
-                        output);
+                using Stream input =
+                    await response.Content.ReadAsStreamAsync();
 
-                    await output.FlushAsync();
-                }
+                using FileStream output =
+                    new FileStream(
+                        temporary,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        81920,
+                        FileOptions.Asynchronous);
 
+                await input.CopyToAsync(
+                    output);
+
+                await output.FlushAsync();
+
+                /*
+                 * input + output are disposed when this scope ends.
+                 */
+            }
+            catch
+            {
+                TryDeleteFile(temporary);
+                throw;
+            }
+
+            try
+            {
                 if (!File.Exists(temporary))
                 {
                     throw new IOException(
-                        $"Download stream finished but temporary file does not exist: {temporary}");
+                        "Temporary download file was not created.");
                 }
 
-                FileInfo tempInfo =
+                FileInfo info =
                     new FileInfo(temporary);
 
-                if (tempInfo.Length <= 0)
+                if (info.Length <= 0)
                 {
                     throw new IOException(
-                        $"Downloaded file is empty: {temporary}");
+                        "Downloaded file is empty.");
                 }
 
                 if (File.Exists(destination))
                 {
-                    try
-                    {
-                        File.Delete(destination);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new IOException(
-                            $"Could not replace existing file: {destination}",
-                            ex);
-                    }
+                    File.Delete(destination);
                 }
 
                 File.Move(
@@ -1657,7 +1566,7 @@ namespace TopuLauncher
                 if (!File.Exists(destination))
                 {
                     throw new IOException(
-                        $"Download finished but final file does not exist: {destination}");
+                        "Final downloaded file was not created.");
                 }
 
                 WriteLog(
@@ -1665,33 +1574,27 @@ namespace TopuLauncher
             }
             catch
             {
-                try
-                {
-                    if (File.Exists(temporary))
-                    {
-                        File.Delete(
-                            temporary);
-                    }
-                }
-                catch
-                {
-                }
-
+                TryDeleteFile(temporary);
                 throw;
             }
             finally
             {
-                try
+                TryDeleteFile(temporary);
+            }
+        }
+
+        private static void TryDeleteFile(
+            string path)
+        {
+            try
+            {
+                if (File.Exists(path))
                 {
-                    if (File.Exists(temporary))
-                    {
-                        File.Delete(
-                            temporary);
-                    }
+                    File.Delete(path);
                 }
-                catch
-                {
-                }
+            }
+            catch
+            {
             }
         }
 
@@ -1726,11 +1629,9 @@ namespace TopuLauncher
             }
 
             string systemJava =
-                FindSystemJava(
-                    requiredMajor);
+                FindSystemJava(requiredMajor);
 
-            if (!string.IsNullOrWhiteSpace(
-                    systemJava))
+            if (!string.IsNullOrWhiteSpace(systemJava))
             {
                 WriteLog(
                     $"Using system Java {requiredMajor}: {systemJava}");
@@ -1739,7 +1640,10 @@ namespace TopuLauncher
             }
 
             WriteLog(
-                $"Java {requiredMajor} not found. Downloading Temurin JRE...");
+                $"Java {requiredMajor} not found.");
+
+            WriteLog(
+                $"Downloading Temurin JRE {requiredMajor}.");
 
             StatusText.Text =
                 $"Downloading Java {requiredMajor}...";
@@ -1759,8 +1663,11 @@ namespace TopuLauncher
                     requiredMajor))
             {
                 throw new InvalidOperationException(
-                    $"The installed Java runtime is not Java {requiredMajor}.");
+                    $"Installed runtime is not Java {requiredMajor}.");
             }
+
+            WriteLog(
+                $"Java {requiredMajor} verified.");
 
             return javaExe;
         }
@@ -1772,8 +1679,7 @@ namespace TopuLauncher
                 Environment.GetEnvironmentVariable(
                     "JAVA_HOME") ?? "";
 
-            if (!string.IsNullOrWhiteSpace(
-                    javaHome))
+            if (!string.IsNullOrWhiteSpace(javaHome))
             {
                 string candidate =
                     Path.Combine(
@@ -1876,13 +1782,13 @@ namespace TopuLauncher
                 "&os=windows" +
                 "&vendor=eclipse";
 
-            using HttpResponseMessage httpResponse =
+            using HttpResponseMessage response =
                 await Http.GetAsync(apiUrl);
 
-            httpResponse.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
 
             string json =
-                await httpResponse.Content.ReadAsStringAsync();
+                await response.Content.ReadAsStringAsync();
 
             using JsonDocument doc =
                 JsonDocument.Parse(json);
@@ -1890,22 +1796,19 @@ namespace TopuLauncher
             JsonElement assets =
                 doc.RootElement;
 
-            if (assets.ValueKind !=
-                JsonValueKind.Array ||
+            if (assets.ValueKind != JsonValueKind.Array ||
                 assets.GetArrayLength() == 0)
             {
                 throw new InvalidOperationException(
                     $"No Windows x64 Temurin JRE {major} was found.");
             }
 
-            JsonElement asset =
-                assets[0];
-
-            JsonElement binary =
-                asset.GetProperty("binary");
+            JsonElement asset = assets[0];
 
             JsonElement package =
-                binary.GetProperty("package");
+                asset
+                    .GetProperty("binary")
+                    .GetProperty("package");
 
             string downloadUrl =
                 package.GetProperty("link")
@@ -1927,16 +1830,26 @@ namespace TopuLauncher
                     "topu-java-" +
                     Guid.NewGuid().ToString("N") +
                     "-" +
-                    SanitizeFileName(
-                        archiveName));
+                    SanitizeFileName(archiveName));
 
             try
             {
                 WriteLog(
                     $"Java archive URL: {downloadUrl}");
 
+                WriteLog(
+                    $"Java temporary archive: {tempArchive}");
+
                 StatusText.Text =
                     $"Downloading Java {major}...";
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * Download the ZIP inside its own scope.
+                 * The HTTP response, input stream and FileStream
+                 * are ALL disposed before extraction begins.
+                 */
 
                 using (
                     HttpResponseMessage javaResponse =
@@ -1946,10 +1859,10 @@ namespace TopuLauncher
                 {
                     javaResponse.EnsureSuccessStatusCode();
 
-                    await using Stream input =
+                    using Stream input =
                         await javaResponse.Content.ReadAsStreamAsync();
 
-                    await using FileStream output =
+                    using FileStream output =
                         new FileStream(
                             tempArchive,
                             FileMode.Create,
@@ -1964,71 +1877,124 @@ namespace TopuLauncher
                     await output.FlushAsync();
                 }
 
+                /*
+                 * At this exact point the HTTP response and file
+                 * stream are closed.
+                 */
+
                 if (!File.Exists(tempArchive))
                 {
                     throw new IOException(
                         "Java archive download did not create a file.");
                 }
 
-                if (Directory.Exists(destination))
+                FileInfo archiveInfo =
+                    new FileInfo(tempArchive);
+
+                if (archiveInfo.Length <= 0)
                 {
-                    Directory.Delete(
-                        destination,
-                        true);
-                }
-
-                Directory.CreateDirectory(
-                    destination);
-
-                ZipFile.ExtractToDirectory(
-                    tempArchive,
-                    destination,
-                    true);
-
-                string? javaRoot =
-                    FindJavaRoot(
-                        destination);
-
-                if (javaRoot != null &&
-                    !File.Exists(
-                        Path.Combine(
-                            destination,
-                            "bin",
-                            "java.exe")))
-                {
-                    MoveJavaRootContents(
-                        javaRoot,
-                        destination);
-                }
-
-                string javaExe =
-                    Path.Combine(
-                        destination,
-                        "bin",
-                        "java.exe");
-
-                if (!File.Exists(javaExe))
-                {
-                    throw new InvalidOperationException(
-                        $"Java {major} was extracted but java.exe could not be located.");
+                    throw new IOException(
+                        "Downloaded Java archive is empty.");
                 }
 
                 WriteLog(
-                    $"Java {major} installed: {javaExe}");
-            }
-            finally
-            {
+                    $"Java archive downloaded: {archiveInfo.Length} bytes.");
+
+                /*
+                 * Extract into a temporary installation directory
+                 * first. This prevents a half-installed Java runtime
+                 * from being left behind if extraction fails.
+                 */
+
+                string extractionDirectory =
+                    destination +
+                    ".extracting-" +
+                    Guid.NewGuid().ToString("N");
+
                 try
                 {
-                    if (File.Exists(tempArchive))
+                    if (Directory.Exists(
+                            extractionDirectory))
                     {
-                        File.Delete(
-                            tempArchive);
+                        Directory.Delete(
+                            extractionDirectory,
+                            true);
                     }
+
+                    Directory.CreateDirectory(
+                        extractionDirectory);
+
+                    WriteLog(
+                        $"Extracting Java to: {extractionDirectory}");
+
+                    /*
+                     * The ZIP FILE IS NOT OPEN ANYMORE.
+                     */
+                    ZipFile.ExtractToDirectory(
+                        tempArchive,
+                        extractionDirectory,
+                        true);
+
+                    string? javaRoot =
+                        FindJavaRoot(
+                            extractionDirectory);
+
+                    if (javaRoot != null &&
+                        !File.Exists(
+                            Path.Combine(
+                                extractionDirectory,
+                                "bin",
+                                "java.exe")))
+                    {
+                        MoveJavaRootContents(
+                            javaRoot,
+                            extractionDirectory);
+                    }
+
+                    string extractedJava =
+                        Path.Combine(
+                            extractionDirectory,
+                            "bin",
+                            "java.exe");
+
+                    if (!File.Exists(extractedJava))
+                    {
+                        throw new InvalidOperationException(
+                            $"Java {major} was extracted but java.exe could not be located.");
+                    }
+
+                    WriteLog(
+                        $"Extracted Java executable: {extractedJava}");
+
+                    if (Directory.Exists(destination))
+                    {
+                        Directory.Delete(
+                            destination,
+                            true);
+                    }
+
+                    Directory.Move(
+                        extractionDirectory,
+                        destination);
+
+                    WriteLog(
+                        $"Java runtime installed: {destination}");
                 }
                 catch
                 {
+                    TryDeleteDirectory(
+                        extractionDirectory);
+
+                    throw;
                 }
+            }
+            finally
+            {
+                /*
+                 * The archive is deleted only AFTER extraction is
+                 * completely finished.
+                 */
+                TryDeleteFile(tempArchive);
             }
         }
 
@@ -2057,14 +2023,12 @@ namespace TopuLauncher
             string destination)
         {
             foreach (string directory in
-                     Directory.GetDirectories(
-                         source))
+                     Directory.GetDirectories(source))
             {
                 string target =
                     Path.Combine(
                         destination,
-                        Path.GetFileName(
-                            directory));
+                        Path.GetFileName(directory));
 
                 if (Directory.Exists(target))
                 {
@@ -2079,14 +2043,12 @@ namespace TopuLauncher
             }
 
             foreach (string file in
-                     Directory.GetFiles(
-                         source))
+                     Directory.GetFiles(source))
             {
                 string target =
                     Path.Combine(
                         destination,
-                        Path.GetFileName(
-                            file));
+                        Path.GetFileName(file));
 
                 File.Move(
                     file,
@@ -2094,11 +2056,20 @@ namespace TopuLauncher
                     true);
             }
 
+            TryDeleteDirectory(source);
+        }
+
+        private static void TryDeleteDirectory(
+            string path)
+        {
             try
             {
-                Directory.Delete(
-                    source,
-                    true);
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(
+                        path,
+                        true);
+                }
             }
             catch
             {
@@ -2106,7 +2077,7 @@ namespace TopuLauncher
         }
 
         // ============================================================
-        // INSTALLATION VALIDATION
+        // MINECRAFT INSTALLATION VALIDATION
         // ============================================================
 
         private bool ValidateMinecraftInstallation(
@@ -2137,6 +2108,11 @@ namespace TopuLauncher
                         root,
                         "versions");
 
+                string vanillaDirectory =
+                    Path.Combine(
+                        versions,
+                        minecraftVersion);
+
                 string fabricDirectory =
                     Path.Combine(
                         versions,
@@ -2151,9 +2127,11 @@ namespace TopuLauncher
                 bool versionsExists =
                     Directory.Exists(versions);
 
+                bool vanillaExists =
+                    Directory.Exists(vanillaDirectory);
+
                 bool fabricExists =
-                    Directory.Exists(
-                        fabricDirectory);
+                    Directory.Exists(fabricDirectory);
 
                 WriteLog(
                     $"Assets directory: {assetsExists}");
@@ -2165,13 +2143,10 @@ namespace TopuLauncher
                     $"Versions directory: {versionsExists}");
 
                 WriteLog(
-                    $"Fabric directory: {fabricExists}");
+                    $"Vanilla directory: {vanillaExists}");
 
-                if (!assetsExists)
-                {
-                    WriteLog(
-                        "WARNING: Assets directory is missing.");
-                }
+                WriteLog(
+                    $"Fabric directory: {fabricExists}");
 
                 if (!librariesExists)
                 {
@@ -2189,10 +2164,31 @@ namespace TopuLauncher
                     return false;
                 }
 
+                if (!vanillaExists)
+                {
+                    WriteLog(
+                        "ERROR: Vanilla Minecraft version directory is missing.");
+
+                    return false;
+                }
+
                 if (!fabricExists)
                 {
                     WriteLog(
                         "ERROR: Fabric version directory is missing.");
+
+                    return false;
+                }
+
+                string vanillaJson =
+                    Path.Combine(
+                        vanillaDirectory,
+                        minecraftVersion + ".json");
+
+                if (!File.Exists(vanillaJson))
+                {
+                    WriteLog(
+                        $"ERROR: Vanilla JSON missing: {vanillaJson}");
 
                     return false;
                 }
@@ -2205,37 +2201,54 @@ namespace TopuLauncher
                 if (!File.Exists(fabricJson))
                 {
                     WriteLog(
-                        $"ERROR: Fabric version JSON missing: {fabricJson}");
+                        $"ERROR: Fabric JSON missing: {fabricJson}");
 
                     return false;
+                }
+
+                /*
+                 * Validate both JSON files instead of guessing a
+                 * Fabric JAR location.
+                 */
+
+                using (
+                    JsonDocument vanillaDocument =
+                        JsonDocument.Parse(
+                            File.ReadAllText(vanillaJson)))
+                {
+                    if (vanillaDocument.RootElement.ValueKind !=
+                        JsonValueKind.Object)
+                    {
+                        WriteLog(
+                            "ERROR: Vanilla JSON is invalid.");
+
+                        return false;
+                    }
+                }
+
+                using (
+                    JsonDocument fabricDocument =
+                        JsonDocument.Parse(
+                            File.ReadAllText(fabricJson)))
+                {
+                    if (fabricDocument.RootElement.ValueKind !=
+                        JsonValueKind.Object)
+                    {
+                        WriteLog(
+                            "ERROR: Fabric JSON is invalid.");
+
+                        return false;
+                    }
                 }
 
                 WriteLog(
-                    $"Fabric version JSON exists: {fabricJson}");
-
-                string loaderJar =
-                    FindFabricLoaderJar(
-                        root,
-                        fabricVersion);
-
-                if (string.IsNullOrWhiteSpace(loaderJar))
-                {
-                    WriteLog(
-                        "ERROR: Fabric loader library JAR could not be found.");
-
-                    return false;
-                }
+                    "Vanilla Minecraft JSON exists and is valid.");
 
                 WriteLog(
-                    $"Fabric loader library JAR exists: {loaderJar}");
+                    "Fabric version JSON exists and is valid.");
 
-                if (!VerifyAsmJars())
-                {
-                    WriteLog(
-                        "ERROR: ASM dependencies are missing.");
-
-                    return false;
-                }
+                WriteLog(
+                    "No custom Fabric loader-JAR path check is required.");
 
                 WriteLog(
                     "===== INSTALLATION VALIDATION COMPLETE =====");
@@ -2250,210 +2263,6 @@ namespace TopuLauncher
 
                 return false;
             }
-        }
-
-        private string FindFabricLoaderJar(
-            string root,
-            string fabricVersion)
-        {
-            try
-            {
-                string librariesRoot =
-                    Path.Combine(
-                        root,
-                        "libraries");
-
-                if (!Directory.Exists(librariesRoot))
-                    return "";
-
-                string exactName =
-                    fabricVersion + ".jar";
-
-                foreach (string file in
-                         Directory.EnumerateFiles(
-                             librariesRoot,
-                             exactName,
-                             SearchOption.AllDirectories))
-                {
-                    if (File.Exists(file))
-                        return file;
-                }
-
-                foreach (string file in
-                         Directory.EnumerateFiles(
-                             librariesRoot,
-                             "fabric-loader-*.jar",
-                             SearchOption.AllDirectories))
-                {
-                    if (File.Exists(file))
-                        return file;
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteException(
-                    "FABRIC LOADER JAR SEARCH ERROR",
-                    ex);
-            }
-
-            return "";
-        }
-
-        private static bool FabricLoaderJarContainsKnotClient(
-            string jarPath)
-        {
-            try
-            {
-                if (!File.Exists(jarPath))
-                    return false;
-
-                using FileStream stream =
-                    new FileStream(
-                        jarPath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read);
-
-                using ZipArchive archive =
-                    new ZipArchive(
-                        stream,
-                        ZipArchiveMode.Read,
-                        leaveOpen: false);
-
-                return archive.GetEntry(
-                           "net/fabricmc/loader/impl/launch/knot/KnotClient.class")
-                       != null;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static string GetFabricLoaderVersion(
-            string fabricVersionName,
-            string? loaderJarPath)
-        {
-            if (!string.IsNullOrWhiteSpace(loaderJarPath))
-            {
-                string filename =
-                    Path.GetFileNameWithoutExtension(
-                        loaderJarPath);
-
-                const string prefix = "fabric-loader-";
-
-                if (filename.StartsWith(
-                        prefix,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    return filename.Substring(
-                        prefix.Length);
-                }
-            }
-
-            const string versionPrefix = "fabric-loader-";
-
-            if (fabricVersionName.StartsWith(
-                    versionPrefix,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                string remainder =
-                    fabricVersionName.Substring(
-                        versionPrefix.Length);
-
-                int separator =
-                    remainder.LastIndexOf('-');
-
-                if (separator > 0)
-                {
-                    return remainder.Substring(
-                        0,
-                        separator);
-                }
-
-                return remainder;
-            }
-
-            return "";
-        }
-
-        private async Task<string> EnsureFabricLoaderJarAsync(
-            string fabricVersionName)
-        {
-            string loaderJar =
-                FindFabricLoaderJar(
-                    _gamePath,
-                    fabricVersionName);
-
-            if (FabricLoaderJarContainsKnotClient(loaderJar))
-            {
-                WriteLog(
-                    $"Fabric loader JAR verified: {loaderJar}");
-
-                return loaderJar;
-            }
-
-            if (!string.IsNullOrWhiteSpace(loaderJar))
-            {
-                WriteLog(
-                    $"Fabric loader JAR is missing KnotClient or is corrupt: {loaderJar}");
-            }
-            else
-            {
-                WriteLog(
-                    "Fabric loader JAR was not found; downloading the exact loader JAR.");
-            }
-
-            string loaderVersion =
-                GetFabricLoaderVersion(
-                    fabricVersionName,
-                    loaderJar);
-
-            if (string.IsNullOrWhiteSpace(loaderVersion))
-            {
-                throw new InvalidOperationException(
-                    $"Could not determine the Fabric loader version from '{fabricVersionName}'.");
-            }
-
-            if (string.IsNullOrWhiteSpace(loaderJar))
-            {
-                loaderJar =
-                    Path.Combine(
-                        _gamePath,
-                        "libraries",
-                        "net",
-                        "fabricmc",
-                        "fabric-loader",
-                        loaderVersion,
-                        $"fabric-loader-{loaderVersion}.jar");
-            }
-
-            string loaderUrl =
-                $"https://maven.fabricmc.net/net/fabricmc/fabric-loader/{Uri.EscapeDataString(loaderVersion)}/fabric-loader-{Uri.EscapeDataString(loaderVersion)}.jar";
-
-            Directory.CreateDirectory(
-                Path.GetDirectoryName(loaderJar)!);
-
-            StatusText.Text =
-                $"Repairing Fabric Loader {loaderVersion}...";
-
-            WriteLog(
-                $"Downloading verified Fabric loader {loaderVersion}: {loaderUrl}");
-
-            await DownloadFileAsync(
-                loaderUrl,
-                loaderJar);
-
-            if (!FabricLoaderJarContainsKnotClient(loaderJar))
-            {
-                throw new InvalidOperationException(
-                    "The downloaded Fabric loader JAR does not contain net.fabricmc.loader.impl.launch.knot.KnotClient.");
-            }
-
-            WriteLog(
-                $"Fabric loader repaired and verified: {loaderJar}");
-
-            return loaderJar;
         }
 
         // ============================================================
@@ -2524,25 +2333,20 @@ namespace TopuLauncher
 
                 if (string.IsNullOrWhiteSpace(username))
                 {
-                    username =
-                        "TopuPlayer";
+                    username = "TopuPlayer";
                 }
 
                 _session =
                     MSession.CreateOfflineSession(
                         username);
 
-                SaveUsername(
-                    username);
+                SaveUsername(username);
 
                 WriteLog(
                     $"Offline username: {username}");
 
                 if (_session != null)
                 {
-                    WriteLog(
-                        $"Session username: {_session.Username}");
-
                     WriteLog(
                         $"Session UUID: {_session.UUID}");
                 }
@@ -2585,46 +2389,46 @@ namespace TopuLauncher
                     $"Installing Minecraft {minecraftVersion}...";
 
                 WriteLog(
-                    "Installing vanilla Minecraft files...");
+                    "Checking/installing base Minecraft files.");
 
                 Progress<InstallerProgressChangedEventArgs>
                     fileProgress =
-                    new Progress<InstallerProgressChangedEventArgs>(
-                        args =>
-                        {
-                            try
+                        new Progress<InstallerProgressChangedEventArgs>(
+                            args =>
                             {
-                                StatusText.Text =
-                                    $"Downloading {args.Name} " +
-                                    $"({args.ProgressedTasks}/{args.TotalTasks})";
-                            }
-                            catch
-                            {
-                            }
-                        });
+                                try
+                                {
+                                    StatusText.Text =
+                                        $"Downloading {args.Name} " +
+                                        $"({args.ProgressedTasks}/{args.TotalTasks})";
+                                }
+                                catch
+                                {
+                                }
+                            });
 
                 Progress<ByteProgress>
                     byteProgress =
-                    new Progress<ByteProgress>(
-                        args =>
-                        {
-                            try
+                        new Progress<ByteProgress>(
+                            args =>
                             {
-                                if (args.TotalBytes > 0)
+                                try
                                 {
-                                    double percent =
-                                        args.ProgressedBytes *
-                                        100.0 /
-                                        args.TotalBytes;
+                                    if (args.TotalBytes > 0)
+                                    {
+                                        double percent =
+                                            args.ProgressedBytes *
+                                            100.0 /
+                                            args.TotalBytes;
 
-                                    StatusText.Text =
-                                        $"Downloading: {percent:0}%";
+                                        StatusText.Text =
+                                            $"Downloading: {percent:0}%";
+                                    }
                                 }
-                            }
-                            catch
-                            {
-                            }
-                        });
+                                catch
+                                {
+                                }
+                            });
 
                 await launcher.InstallAsync(
                     minecraftVersion,
@@ -2633,7 +2437,7 @@ namespace TopuLauncher
                     CancellationToken.None);
 
                 WriteLog(
-                    "Minecraft installation completed.");
+                    "Base Minecraft files are installed.");
 
                 // ----------------------------------------------------
                 // FABRIC
@@ -2648,7 +2452,7 @@ namespace TopuLauncher
                     $"Fabric installed: {fabricVersion}");
 
                 // ----------------------------------------------------
-                // VALIDATE
+                // VALIDATION
                 // ----------------------------------------------------
 
                 bool valid =
@@ -2674,7 +2478,7 @@ namespace TopuLauncher
                     minecraftVersion);
 
                 // ----------------------------------------------------
-                // SESSION CHECK
+                // SESSION
                 // ----------------------------------------------------
 
                 if (_session == null)
@@ -2684,7 +2488,7 @@ namespace TopuLauncher
                 }
 
                 // ----------------------------------------------------
-                // LAUNCH OPTIONS
+                // OPTIONS
                 // ----------------------------------------------------
 
                 MLaunchOption options =
@@ -2728,19 +2532,16 @@ namespace TopuLauncher
                 _minecraftProcess =
                     process;
 
+                // ----------------------------------------------------
+                // PROCESS OUTPUT
+                // ----------------------------------------------------
+
                 try
                 {
-                    process.StartInfo.RedirectStandardOutput =
-                        true;
-
-                    process.StartInfo.RedirectStandardError =
-                        true;
-
-                    process.StartInfo.UseShellExecute =
-                        false;
-
-                    process.StartInfo.CreateNoWindow =
-                        true;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
 
                     process.OutputDataReceived +=
                         Minecraft_OutputDataReceived;
@@ -2810,8 +2611,7 @@ namespace TopuLauncher
                 StatusText.Text =
                     $"Topu Client running as {username}";
 
-                _ = MonitorMinecraftAsync(
-                    process);
+                _ = MonitorMinecraftAsync(process);
             }
             catch (Exception ex)
             {
@@ -2825,7 +2625,7 @@ namespace TopuLauncher
                 MessageBox.Show(
                     "Minecraft failed to launch.\n\n" +
                     ex.Message +
-                    "\n\nThe actual Minecraft output has been written to:\n" +
+                    "\n\nThe launcher log is here:\n" +
                     _logPath,
                     "Topu Client",
                     MessageBoxButton.OK,
@@ -2888,8 +2688,7 @@ namespace TopuLauncher
 
                 try
                 {
-                    await Task.Delay(
-                        500);
+                    await Task.Delay(500);
                 }
                 catch
                 {
@@ -2915,7 +2714,7 @@ namespace TopuLauncher
                         "Minecraft did not exit normally.");
 
                     AppendGameLog(
-                        "The [MC] and [MC-ERR] lines above contain the actual Minecraft error.");
+                        "The [MC] and [MC-ERR] lines above contain the Minecraft output.");
                 }
 
                 await Dispatcher.InvokeAsync(
