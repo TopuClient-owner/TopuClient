@@ -739,8 +739,8 @@ namespace TopuLauncher
                 fabricJson);
 
             if (!ValidateFabricInstallation(
-                    fabricVersionName,
-                    minecraftPath))
+                fabricVersionName,
+                minecraftPath))
             {
                 throw new InvalidOperationException(
                     "Fabric installation is incomplete. Check topu-minecraft.log.");
@@ -895,20 +895,6 @@ namespace TopuLauncher
             WriteLog(
                 $"Fabric libraries downloaded: {downloadedLibraries}");
 
-            /*
-             * IMPORTANT:
-             *
-             * Fabric Loader's launch profile can refer to the loader
-             * JAR as a version JAR:
-             *
-             * versions\
-             * fabric-loader-X-Y\
-             * fabric-loader-X-Y.jar
-             *
-             * If the profile explicitly asks for that file, we create
-             * it from the exact loader library already downloaded.
-             */
-
             string expectedVersionJar =
                 Path.Combine(
                     _gamePath,
@@ -1048,11 +1034,6 @@ namespace TopuLauncher
                     }
                 }
             }
-
-            /*
-             * Last deterministic search. We only search inside the
-             * actual Fabric Loader Maven directory.
-             */
 
             string loaderRoot =
                 Path.Combine(
@@ -2470,6 +2451,21 @@ namespace TopuLauncher
                         "CmlLib returned a null Minecraft process.");
                 }
 
+                // ====================================================
+                // FABRIC DUPLICATE LOADER FIX
+                // ====================================================
+
+                FixFabricDuplicateLoaderClasspath(
+                    process,
+                    fabricVersion);
+
+                // ====================================================
+                // INVALID FABRICMCEMU FIX
+                // ====================================================
+
+                FixFabricMcEmuArgument(
+                    process);
+
                 _minecraftProcess =
                     process;
 
@@ -2556,6 +2552,293 @@ namespace TopuLauncher
             finally
             {
                 LaunchBtn.IsEnabled = true;
+            }
+        }
+
+        // ============================================================
+        // FABRIC DUPLICATE LOADER CLASS FIX
+        // ============================================================
+
+        private void FixFabricDuplicateLoaderClasspath(
+            Process process,
+            string fabricVersion)
+        {
+            try
+            {
+                string arguments =
+                    process.StartInfo.Arguments;
+
+                string loaderLibraryRoot =
+                    Path.Combine(
+                        _gamePath,
+                        "libraries",
+                        "net",
+                        "fabricmc",
+                        "fabric-loader");
+
+                string loaderVersionJar =
+                    Path.Combine(
+                        _gamePath,
+                        "versions",
+                        fabricVersion,
+                        fabricVersion + ".jar");
+
+                string loaderLibraryJar = "";
+
+                if (Directory.Exists(loaderLibraryRoot))
+                {
+                    string[] jars =
+                        Directory.GetFiles(
+                            loaderLibraryRoot,
+                            "fabric-loader-*.jar",
+                            SearchOption.AllDirectories);
+
+                    foreach (string jar in jars)
+                    {
+                        if (File.Exists(jar) &&
+                            new FileInfo(jar).Length > 0)
+                        {
+                            loaderLibraryJar = jar;
+                            break;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(loaderLibraryJar))
+                {
+                    WriteLog(
+                        "Fabric duplicate-loader fix: loader library was not found.");
+
+                    return;
+                }
+
+                WriteLog(
+                    $"Fabric version JAR kept: {loaderVersionJar}");
+
+                WriteLog(
+                    $"Fabric library JAR to remove from classpath: {loaderLibraryJar}");
+
+                string normalizedLibrary =
+                    Path.GetFullPath(
+                        loaderLibraryJar)
+                    .Replace(
+                        '/',
+                        '\\');
+
+                string normalizedVersion =
+                    Path.GetFullPath(
+                        loaderVersionJar)
+                    .Replace(
+                        '/',
+                        '\\');
+
+                string quotedLibrary =
+                    "\"" +
+                    normalizedLibrary +
+                    "\"";
+
+                string quotedVersion =
+                    "\"" +
+                    normalizedVersion +
+                    "\"";
+
+                bool foundLibrary =
+                    arguments.Contains(
+                        normalizedLibrary,
+                        StringComparison.OrdinalIgnoreCase);
+
+                bool foundVersion =
+                    arguments.Contains(
+                        normalizedVersion,
+                        StringComparison.OrdinalIgnoreCase);
+
+                WriteLog(
+                    $"Fabric loader library present before fix: {foundLibrary}");
+
+                WriteLog(
+                    $"Fabric version JAR present before fix: {foundVersion}");
+
+                // ----------------------------------------------------
+                // Remove exact loader library from classpath.
+                // ----------------------------------------------------
+
+                arguments =
+                    arguments.Replace(
+                        quotedLibrary + ";",
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                arguments =
+                    arguments.Replace(
+                        ";" + quotedLibrary,
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                arguments =
+                    arguments.Replace(
+                        quotedLibrary,
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                // ----------------------------------------------------
+                // Also handle an unquoted classpath entry.
+                // ----------------------------------------------------
+
+                arguments =
+                    arguments.Replace(
+                        normalizedLibrary + ";",
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                arguments =
+                    arguments.Replace(
+                        ";" + normalizedLibrary,
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                arguments =
+                    arguments.Replace(
+                        normalizedLibrary,
+                        "",
+                        StringComparison.OrdinalIgnoreCase);
+
+                process.StartInfo.Arguments =
+                    arguments;
+
+                int libraryOccurrences =
+                    CountOccurrences(
+                        process.StartInfo.Arguments,
+                        normalizedLibrary);
+
+                int versionOccurrences =
+                    CountOccurrences(
+                        process.StartInfo.Arguments,
+                        normalizedVersion);
+
+                WriteLog(
+                    $"Fabric loader library classpath occurrences after fix: {libraryOccurrences}");
+
+                WriteLog(
+                    $"Fabric version JAR classpath occurrences after fix: {versionOccurrences}");
+
+                if (libraryOccurrences > 0)
+                {
+                    WriteLog(
+                        "WARNING: Fabric loader library still appears in classpath.");
+                }
+                else
+                {
+                    WriteLog(
+                        "Fabric duplicate loader classpath fix applied successfully.");
+                }
+
+                if (versionOccurrences == 0)
+                {
+                    WriteLog(
+                        "WARNING: Fabric version JAR was not found in the generated classpath.");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "FABRIC DUPLICATE LOADER FIX ERROR",
+                    ex);
+
+                throw;
+            }
+        }
+
+        private static int CountOccurrences(
+            string text,
+            string value)
+        {
+            if (string.IsNullOrEmpty(text) ||
+                string.IsNullOrEmpty(value))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            int index = 0;
+
+            while (true)
+            {
+                index =
+                    text.IndexOf(
+                        value,
+                        index,
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (index < 0)
+                    break;
+
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
+
+        // ============================================================
+        // FABRICMCEMU FIX
+        // ============================================================
+
+        private void FixFabricMcEmuArgument(
+            Process process)
+        {
+            try
+            {
+                string arguments =
+                    process.StartInfo.Arguments;
+
+                string[] invalidArguments =
+                {
+                    "\"-DFabricMcEmu= net.minecraft.client.main.Main \"",
+                    "\"-DFabricMcEmu= net.minecraft.client.main.Main\"",
+                    "-DFabricMcEmu= net.minecraft.client.main.Main",
+                    "-DFabricMcEmu=net.minecraft.client.main.Main"
+                };
+
+                bool removed = false;
+
+                foreach (string invalidArgument in
+                         invalidArguments)
+                {
+                    if (arguments.Contains(
+                            invalidArgument,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        arguments =
+                            arguments.Replace(
+                                invalidArgument,
+                                "",
+                                StringComparison.OrdinalIgnoreCase);
+
+                        removed = true;
+                    }
+                }
+
+                if (removed)
+                {
+                    process.StartInfo.Arguments =
+                        arguments;
+
+                    WriteLog(
+                        "Removed invalid FabricMcEmu argument.");
+                }
+                else
+                {
+                    WriteLog(
+                        "No invalid FabricMcEmu argument detected.");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteException(
+                    "FABRIC MCEMU ARGUMENT FIX ERROR",
+                    ex);
+
+                throw;
             }
         }
 
