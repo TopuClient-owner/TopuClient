@@ -887,23 +887,6 @@ namespace TopuLauncher
             WriteLog(
                 $"Fabric libraries downloaded: {downloadedLibraries}");
 
-            /*
-             * IMPORTANT:
-             *
-             * DO NOT remove fabric-loader from the library
-             * classpath.
-             *
-             * KnotClient is inside fabric-loader.
-             *
-             * The previous launcher code removed it and that
-             * could produce:
-             *
-             * ClassNotFoundException:
-             * net.fabricmc.loader.impl.launch.knot.KnotClient
-             *
-             * We therefore only make sure the loader exists.
-             */
-
             string? loaderJar =
                 FindExactFabricLoaderLibrary(
                     libraries);
@@ -927,16 +910,6 @@ namespace TopuLauncher
             if (!File.Exists(expectedVersionJar) ||
                 new FileInfo(expectedVersionJar).Length <= 0)
             {
-                WriteLog(
-                    "Fabric version JAR is missing.");
-
-                /*
-                 * Some CmlLib/Fabric installations use the
-                 * loader library JAR as the version JAR.
-                 *
-                 * Create it only when absent.
-                 */
-
                 Directory.CreateDirectory(
                     Path.GetDirectoryName(
                         expectedVersionJar)!);
@@ -1543,6 +1516,9 @@ namespace TopuLauncher
                         "Downloaded file is empty.");
                 }
 
+                // The using scopes above have now completed
+                // before the move happens.
+
                 if (File.Exists(destination))
                     File.Delete(destination);
 
@@ -1596,6 +1572,9 @@ namespace TopuLauncher
                     "bin",
                     "java.exe");
 
+            WriteLog(
+                $"Checking Topu Java {requiredMajor}: {javaExe}");
+
             if (File.Exists(javaExe) &&
                 IsRequiredJava(
                     javaExe,
@@ -1621,6 +1600,9 @@ namespace TopuLauncher
             StatusText.Text =
                 $"Downloading Java {requiredMajor}...";
 
+            WriteLog(
+                $"Java {requiredMajor} not found. Installing bundled runtime.");
+
             await DownloadAndInstallJavaAsync(
                 requiredMajor,
                 runtimeFolder);
@@ -1628,7 +1610,7 @@ namespace TopuLauncher
             if (!File.Exists(javaExe))
             {
                 throw new InvalidOperationException(
-                    $"Java {requiredMajor} installation failed.");
+                    $"Java {requiredMajor} installation failed: java.exe not found at {javaExe}");
             }
 
             if (!IsRequiredJava(
@@ -1638,6 +1620,9 @@ namespace TopuLauncher
                 throw new InvalidOperationException(
                     $"Installed runtime is not Java {requiredMajor}.");
             }
+
+            WriteLog(
+                $"Bundled Java {requiredMajor} verified: {javaExe}");
 
             return javaExe;
         }
@@ -1729,15 +1714,32 @@ namespace TopuLauncher
                     Environment.NewLine +
                     stderr;
 
+                WriteLog(
+                    $"Java version check [{javaPath}]: {combined.Trim()}");
+
                 return combined.Contains(
                     $"version \"{requiredMajor}.",
                     StringComparison.OrdinalIgnoreCase);
             }
-            catch
+            catch (Exception ex)
             {
+                WriteLog(
+                    $"Java validation failed for {javaPath}: {ex.Message}");
+
                 return false;
             }
         }
+
+        // ============================================================
+        // JAVA INSTALLER
+        //
+        // IMPORTANT:
+        // The ZIP download is completed in a SEPARATE method.
+        // That method returns only after HttpResponseMessage,
+        // response stream and FileStream have all been disposed.
+        //
+        // Only AFTER that do we call ZipFile.ExtractToDirectory().
+        // ============================================================
 
         private async Task DownloadAndInstallJavaAsync(
             int major,
@@ -1751,6 +1753,9 @@ namespace TopuLauncher
                 "&image_type=jre" +
                 "&os=windows" +
                 "&vendor=eclipse";
+
+            WriteLog(
+                $"Querying Adoptium for Java {major}: {apiUrl}");
 
             using HttpResponseMessage response =
                 await Http.GetAsync(apiUrl);
@@ -1770,7 +1775,7 @@ namespace TopuLauncher
                 assets.GetArrayLength() == 0)
             {
                 throw new InvalidOperationException(
-                    $"No Java {major} Windows x64 runtime found.");
+                    $"No Java {major} Windows x64 JRE was returned by Adoptium.");
             }
 
             JsonElement package =
@@ -1800,115 +1805,459 @@ namespace TopuLauncher
                     "-" +
                     SanitizeFileName(archiveName));
 
+            string extractionDirectory =
+                destination +
+                ".extracting-" +
+                Guid.NewGuid().ToString("N");
+
+            WriteLog(
+                $"Java archive: {archiveName}");
+
+            WriteLog(
+                $"Java temporary archive: {tempArchive}");
+
+            WriteLog(
+                $"Java extraction directory: {extractionDirectory}");
+
             try
             {
-                using HttpResponseMessage javaResponse =
-                    await Http.GetAsync(
-                        downloadUrl,
-                        HttpCompletionOption.ResponseHeadersRead);
+                // ====================================================
+                // STEP 1: DOWNLOAD
+                //
+                // This method does NOT return until every stream is
+                // disposed. This is the important fix.
+                // ====================================================
 
-                javaResponse.EnsureSuccessStatusCode();
+                await DownloadJavaArchiveAsync(
+                    downloadUrl,
+                    tempArchive);
 
-                using Stream input =
-                    await javaResponse.Content.ReadAsStreamAsync();
+                WriteLog(
+                    "Java archive download completed.");
 
-                using FileStream output =
-                    new FileStream(
-                        tempArchive,
-                        FileMode.Create,
-                        FileAccess.Write,
-                        FileShare.None,
-                        81920,
-                        FileOptions.Asynchronous);
-
-                await input.CopyToAsync(output);
-
-                await output.FlushAsync();
-
-                if (!File.Exists(tempArchive) ||
-                    new FileInfo(tempArchive).Length <= 0)
+                if (!File.Exists(tempArchive))
                 {
-                    throw new IOException(
-                        "Java archive download failed.");
+                    throw new FileNotFoundException(
+                        "Java archive does not exist after download.",
+                        tempArchive);
                 }
 
-                string extractionDirectory =
+                long archiveSize =
+                    new FileInfo(tempArchive).Length;
+
+                if (archiveSize <= 0)
+                {
+                    throw new IOException(
+                        "Java archive is empty.");
+                }
+
+                WriteLog(
+                    $"Java archive size: {archiveSize:N0} bytes");
+
+                // ====================================================
+                // STEP 2: ENSURE STREAMS ARE GONE
+                // ====================================================
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
+                // ====================================================
+                // STEP 3: EXTRACT
+                // ====================================================
+
+                TryDeleteDirectory(
+                    extractionDirectory);
+
+                Directory.CreateDirectory(
+                    extractionDirectory);
+
+                StatusText.Text =
+                    $"Extracting Java {major}...";
+
+                WriteLog(
+                    "Extracting Java archive.");
+
+                await ExtractZipWithRetryAsync(
+                    tempArchive,
+                    extractionDirectory);
+
+                WriteLog(
+                    "Java extraction completed.");
+
+                // ====================================================
+                // STEP 4: FIND JAVA ROOT
+                // ====================================================
+
+                string? javaRoot =
+                    FindJavaRoot(
+                        extractionDirectory);
+
+                if (javaRoot != null)
+                {
+                    WriteLog(
+                        $"Java root detected: {javaRoot}");
+
+                    MoveJavaRootContents(
+                        javaRoot,
+                        extractionDirectory);
+                }
+
+                string extractedJava =
+                    Path.Combine(
+                        extractionDirectory,
+                        "bin",
+                        "java.exe");
+
+                if (!File.Exists(extractedJava))
+                {
+                    WriteLog(
+                        $"Expected java.exe: {extractedJava}");
+
+                    throw new InvalidOperationException(
+                        "java.exe was not found after extracting the Java archive.");
+                }
+
+                WriteLog(
+                    $"Extracted Java executable verified: {extractedJava}");
+
+                // ====================================================
+                // STEP 5: VALIDATE EXTRACTED JAVA
+                // ====================================================
+
+                if (!IsRequiredJava(
+                        extractedJava,
+                        major))
+                {
+                    throw new InvalidOperationException(
+                        $"Extracted Java runtime is not Java {major}.");
+                }
+
+                WriteLog(
+                    $"Extracted Java {major} runtime validated.");
+
+                // ====================================================
+                // STEP 6: REPLACE OLD INSTALL
+                // ====================================================
+
+                string parent =
+                    Path.GetDirectoryName(destination)
+                    ?? throw new InvalidOperationException(
+                        "Could not determine Java runtime parent directory.");
+
+                Directory.CreateDirectory(parent);
+
+                string backupDirectory =
                     destination +
-                    ".extracting-" +
+                    ".old-" +
                     Guid.NewGuid().ToString("N");
+
+                if (Directory.Exists(backupDirectory))
+                {
+                    TryDeleteDirectory(
+                        backupDirectory);
+                }
+
+                if (Directory.Exists(destination))
+                {
+                    WriteLog(
+                        $"Existing Java runtime found: {destination}");
+
+                    try
+                    {
+                        Directory.Move(
+                            destination,
+                            backupDirectory);
+
+                        WriteLog(
+                            $"Existing Java runtime moved to: {backupDirectory}");
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(
+                            $"Could not move old Java runtime: {ex.Message}");
+
+                        TryDeleteDirectory(
+                            destination);
+                    }
+                }
 
                 try
                 {
-                    TryDeleteDirectory(
-                        extractionDirectory);
-
-                    Directory.CreateDirectory(
-                        extractionDirectory);
-
-                    ZipFile.ExtractToDirectory(
-                        tempArchive,
-                        extractionDirectory,
-                        true);
-
-                    string? javaRoot =
-                        FindJavaRoot(
-                            extractionDirectory);
-
-                    if (javaRoot != null &&
-                        !File.Exists(
-                            Path.Combine(
-                                extractionDirectory,
-                                "bin",
-                                "java.exe")))
-                    {
-                        MoveJavaRootContents(
-                            javaRoot,
-                            extractionDirectory);
-                    }
-
-                    string extractedJava =
-                        Path.Combine(
-                            extractionDirectory,
-                            "bin",
-                            "java.exe");
-
-                    if (!File.Exists(extractedJava))
-                    {
-                        throw new InvalidOperationException(
-                            "java.exe was not found after extraction.");
-                    }
-
-                    if (Directory.Exists(destination))
-                    {
-                        Directory.Delete(
-                            destination,
-                            true);
-                    }
-
                     Directory.Move(
                         extractionDirectory,
                         destination);
+
+                    WriteLog(
+                        $"Java runtime installed: {destination}");
                 }
                 catch
                 {
-                    TryDeleteDirectory(
-                        extractionDirectory);
+                    // If installation failed but an old runtime was
+                    // moved away, restore it.
+
+                    if (!Directory.Exists(destination) &&
+                        Directory.Exists(backupDirectory))
+                    {
+                        try
+                        {
+                            Directory.Move(
+                                backupDirectory,
+                                destination);
+                        }
+                        catch
+                        {
+                        }
+                    }
 
                     throw;
                 }
+
+                // ====================================================
+                // STEP 7: VERIFY FINAL INSTALL
+                // ====================================================
+
+                string finalJava =
+                    Path.Combine(
+                        destination,
+                        "bin",
+                        "java.exe");
+
+                if (!File.Exists(finalJava))
+                {
+                    throw new InvalidOperationException(
+                        $"Java installation completed but java.exe is missing: {finalJava}");
+                }
+
+                if (!IsRequiredJava(
+                        finalJava,
+                        major))
+                {
+                    throw new InvalidOperationException(
+                        $"Final Java installation is not Java {major}.");
+                }
+
+                WriteLog(
+                    $"FINAL JAVA VERIFIED: {finalJava}");
+
+                StatusText.Text =
+                    $"Java {major} ready.";
             }
             finally
             {
-                TryDeleteFile(tempArchive);
+                TryDeleteFile(
+                    tempArchive);
+
+                TryDeleteDirectory(
+                    extractionDirectory);
+
+                // Clean old runtime backup if one exists.
+                // It is only a backup and is no longer needed after
+                // the new runtime has been successfully installed.
+                string backupPrefix =
+                    destination + ".old-";
+
+                string? parent =
+                    Path.GetDirectoryName(destination);
+
+                if (!string.IsNullOrWhiteSpace(parent) &&
+                    Directory.Exists(parent))
+                {
+                    try
+                    {
+                        foreach (string directory in
+                                 Directory.GetDirectories(
+                                     parent,
+                                     Path.GetFileName(
+                                         backupPrefix) + "*"))
+                        {
+                            TryDeleteDirectory(
+                                directory);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
             }
+        }
+
+        // ============================================================
+        // JAVA ARCHIVE DOWNLOAD
+        //
+        // CRITICAL:
+        // All "using" scopes finish BEFORE this method returns.
+        // Therefore the caller can safely extract the ZIP afterwards.
+        // ============================================================
+
+        private async Task DownloadJavaArchiveAsync(
+            string url,
+            string destination)
+        {
+            string? directory =
+                Path.GetDirectoryName(destination);
+
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(
+                    directory);
+            }
+
+            WriteLog(
+                $"Downloading Java from: {url}");
+
+            WriteLog(
+                $"Saving Java archive to: {destination}");
+
+            using (HttpResponseMessage response =
+                   await Http.GetAsync(
+                       url,
+                       HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+
+                await using (Stream input =
+                             await response.Content.ReadAsStreamAsync())
+                {
+                    await using (FileStream output =
+                                 new FileStream(
+                                     destination,
+                                     FileMode.Create,
+                                     FileAccess.Write,
+                                     FileShare.None,
+                                     1024 * 64,
+                                     FileOptions.Asynchronous |
+                                     FileOptions.SequentialScan))
+                    {
+                        await input.CopyToAsync(
+                            output,
+                            1024 * 64);
+
+                        await output.FlushAsync();
+                    }
+                }
+            }
+
+            // IMPORTANT:
+            // The HttpResponseMessage, input Stream and output
+            // FileStream have all been disposed at this point.
+
+            WriteLog(
+                "All Java download streams are closed.");
+
+            if (!File.Exists(destination))
+            {
+                throw new IOException(
+                    "Java archive was not created.");
+            }
+
+            if (new FileInfo(destination).Length <= 0)
+            {
+                throw new IOException(
+                    "Java archive was downloaded but is empty.");
+            }
+        }
+
+        // ============================================================
+        // ZIP EXTRACTION WITH RETRY
+        // ============================================================
+
+        private async Task ExtractZipWithRetryAsync(
+            string archive,
+            string destination)
+        {
+            const int maxAttempts = 5;
+
+            Exception? lastException = null;
+
+            for (int attempt = 1;
+                 attempt <= maxAttempts;
+                 attempt++)
+            {
+                try
+                {
+                    WriteLog(
+                        $"ZIP extraction attempt {attempt}/{maxAttempts}");
+
+                    ZipFile.ExtractToDirectory(
+                        archive,
+                        destination,
+                        true);
+
+                    WriteLog(
+                        "ZIP extraction succeeded.");
+
+                    return;
+                }
+                catch (IOException ex)
+                {
+                    lastException = ex;
+
+                    WriteLog(
+                        $"ZIP extraction attempt {attempt} failed: {ex.Message}");
+
+                    if (attempt == maxAttempts)
+                        break;
+
+                    await Task.Delay(
+                        1000 * attempt);
+
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    lastException = ex;
+
+                    WriteLog(
+                        $"ZIP extraction access failure {attempt}: {ex.Message}");
+
+                    if (attempt == maxAttempts)
+                        break;
+
+                    await Task.Delay(
+                        1000 * attempt);
+                }
+            }
+
+            throw new IOException(
+                $"Could not extract Java archive after {maxAttempts} attempts.",
+                lastException);
         }
 
         private static string? FindJavaRoot(
             string destination)
         {
+            // Case 1:
+            // Archive itself contains bin\java.exe.
+            if (File.Exists(
+                    Path.Combine(
+                        destination,
+                        "bin",
+                        "java.exe")))
+            {
+                return null;
+            }
+
             foreach (string directory in
                      Directory.GetDirectories(
                          destination))
+            {
+                if (File.Exists(
+                        Path.Combine(
+                            directory,
+                            "bin",
+                            "java.exe")))
+                {
+                    return directory;
+                }
+            }
+
+            // Some archives can contain another level of directories.
+            foreach (string directory in
+                     Directory.GetDirectories(
+                         destination,
+                         "*",
+                         SearchOption.AllDirectories))
             {
                 if (File.Exists(
                         Path.Combine(
@@ -1927,8 +2276,22 @@ namespace TopuLauncher
             string source,
             string destination)
         {
+            if (!Directory.Exists(source))
+                return;
+
+            if (string.Equals(
+                    Path.GetFullPath(source).TrimEnd(
+                        Path.DirectorySeparatorChar),
+                    Path.GetFullPath(destination).TrimEnd(
+                        Path.DirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             foreach (string directory in
-                     Directory.GetDirectories(source))
+                     Directory.GetDirectories(
+                         source))
             {
                 string target =
                     Path.Combine(
@@ -1948,7 +2311,8 @@ namespace TopuLauncher
             }
 
             foreach (string file in
-                     Directory.GetFiles(source))
+                     Directory.GetFiles(
+                         source))
             {
                 string target =
                     Path.Combine(
@@ -1961,7 +2325,8 @@ namespace TopuLauncher
                     true);
             }
 
-            TryDeleteDirectory(source);
+            TryDeleteDirectory(
+                source);
         }
 
         private static void TryDeleteDirectory(
@@ -1970,7 +2335,9 @@ namespace TopuLauncher
             try
             {
                 if (Directory.Exists(path))
-                    Directory.Delete(path, true);
+                    Directory.Delete(
+                        path,
+                        true);
             }
             catch
             {
@@ -2023,10 +2390,6 @@ namespace TopuLauncher
                         fabricDirectory,
                         fabricVersion + ".jar");
 
-                // ----------------------------------------------------
-                // VANILLA
-                // ----------------------------------------------------
-
                 if (!File.Exists(vanillaJson))
                 {
                     WriteLog(
@@ -2050,10 +2413,6 @@ namespace TopuLauncher
 
                     return false;
                 }
-
-                // ----------------------------------------------------
-                // FABRIC
-                // ----------------------------------------------------
 
                 if (!File.Exists(fabricJson))
                 {
@@ -2081,11 +2440,11 @@ namespace TopuLauncher
 
                 using JsonDocument vanillaDocument =
                     JsonDocument.Parse(
-                        awaitReadFile(vanillaJson));
+                        File.ReadAllText(vanillaJson));
 
                 using JsonDocument fabricDocument =
                     JsonDocument.Parse(
-                        awaitReadFile(fabricJson));
+                        File.ReadAllText(fabricJson));
 
                 if (vanillaDocument.RootElement.ValueKind !=
                     JsonValueKind.Object)
@@ -2104,10 +2463,6 @@ namespace TopuLauncher
 
                     return false;
                 }
-
-                // ----------------------------------------------------
-                // FABRIC LOADER
-                // ----------------------------------------------------
 
                 string loaderRoot =
                     Path.Combine(
@@ -2170,12 +2525,6 @@ namespace TopuLauncher
 
                 return false;
             }
-        }
-
-        private static string awaitReadFile(
-            string path)
-        {
-            return File.ReadAllText(path);
         }
 
         // ============================================================
@@ -2445,29 +2794,10 @@ namespace TopuLauncher
                         "CmlLib returned a null Minecraft process.");
                 }
 
-                /*
-                 * ====================================================
-                 * IMPORTANT FABRIC FIX
-                 * ====================================================
-                 *
-                 * DO NOT modify process.StartInfo.Arguments here.
-                 *
-                 * In the previous code we removed the Fabric Loader
-                 * JAR from the classpath.
-                 *
-                 * KnotClient is inside Fabric Loader.
-                 *
-                 * Therefore CmlLib's generated classpath must be left
-                 * intact.
-                 */
-
+                // DO NOT MODIFY THE CMLLIB ARGUMENTS.
                 LogFabricClasspath(
                     process,
                     fabricVersion);
-
-                // ----------------------------------------------------
-                // PROCESS CONFIG
-                // ----------------------------------------------------
 
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.RedirectStandardError = true;
@@ -2627,10 +2957,6 @@ namespace TopuLauncher
 
                 WriteLog(
                     $"Fabric version JAR present in arguments: {versionPresent}");
-
-                /*
-                 * We deliberately do not modify the arguments.
-                 */
 
                 WriteLog(
                     "Fabric classpath left untouched.");
