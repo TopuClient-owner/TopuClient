@@ -944,48 +944,37 @@ namespace TopuLauncher
             Directory.CreateDirectory(
                 fabricDirectory);
 
-            string expectedVersionJar =
+            /*
+             * IMPORTANT:
+             *
+             * Fabric Loader is a library and must only appear once
+             * on the runtime classpath:
+             *
+             * libraries\net\fabricmc\fabric-loader\<version>\
+             *     fabric-loader-<version>.jar
+             *
+             * Older versions of this launcher copied the loader JAR
+             * into the Fabric version directory as:
+             *
+             * versions\<fabric>\ <fabric>.jar
+             *
+             * That creates two copies of FabricLoader.class on the
+             * classpath and Fabric aborts with:
+             *
+             * "duplicate fabric loader classes found on classpath"
+             *
+             * Remove that legacy duplicate if it is still present.
+             */
+            string legacyFabricVersionJar =
                 Path.Combine(
                     fabricDirectory,
                     fabricVersionName + ".jar");
 
-            /*
-             * CmlLib/Fabric installations can sometimes leave the
-             * Fabric profile JAR absent.
-             *
-             * We create it from the verified Fabric Loader JAR
-             * ONLY when it is missing.
-             *
-             * We never overwrite an existing valid JAR.
-             */
-            if (!File.Exists(expectedVersionJar) ||
-                new FileInfo(expectedVersionJar).Length <= 0)
-            {
-                WriteLog(
-                    "Fabric version JAR is missing.");
-
-                await CreateFileCopyWithRetryAsync(
-                    loaderJar,
-                    expectedVersionJar);
-
-                WriteLog(
-                    $"Created Fabric version JAR: {expectedVersionJar}");
-            }
-            else
-            {
-                WriteLog(
-                    $"Fabric version JAR already exists: {expectedVersionJar}");
-            }
-
-            if (!File.Exists(expectedVersionJar) ||
-                new FileInfo(expectedVersionJar).Length <= 0)
-            {
-                throw new IOException(
-                    $"Fabric version JAR could not be created: {expectedVersionJar}");
-            }
+            RemoveLegacyFabricVersionJar(
+                legacyFabricVersionJar);
 
             WriteLog(
-                "Fabric profile repair completed.");
+                "Fabric profile repair completed without creating a duplicate Fabric Loader JAR.");
         }
 
         // ============================================================
@@ -1299,10 +1288,21 @@ namespace TopuLauncher
                         fabricDirectory,
                         fabricVersionName + ".json");
 
-                string fabricJar =
+                string legacyFabricJar =
                     Path.Combine(
                         fabricDirectory,
                         fabricVersionName + ".jar");
+
+                /*
+                 * A Fabric profile consists of the profile JSON plus
+                 * its referenced libraries. The Fabric Loader JAR
+                 * belongs in libraries, not beside the profile JSON.
+                 *
+                 * Delete an old launcher-generated duplicate before
+                 * validating the installation.
+                 */
+                RemoveLegacyFabricVersionJar(
+                    legacyFabricJar);
 
                 if (!Directory.Exists(
                         fabricDirectory))
@@ -1317,22 +1317,6 @@ namespace TopuLauncher
                 {
                     WriteLog(
                         "ERROR: Fabric JSON does not exist.");
-
-                    return false;
-                }
-
-                if (!File.Exists(fabricJar))
-                {
-                    WriteLog(
-                        "ERROR: Fabric version JAR does not exist.");
-
-                    return false;
-                }
-
-                if (new FileInfo(fabricJar).Length <= 0)
-                {
-                    WriteLog(
-                        "ERROR: Fabric version JAR is empty.");
 
                     return false;
                 }
@@ -1408,7 +1392,7 @@ namespace TopuLauncher
                     $"Fabric JSON verified: {fabricJson}");
 
                 WriteLog(
-                    $"Fabric version JAR verified: {fabricJar}");
+                    $"No duplicate Fabric version JAR is being used: {legacyFabricJar}");
 
                 WriteLog(
                     "Fabric installation validation passed.");
@@ -1906,71 +1890,45 @@ namespace TopuLauncher
         }
 
         // ============================================================
-        // SAFE FILE COPY
+        // LEGACY FABRIC DUPLICATE CLEANUP
         // ============================================================
 
-        private async Task CreateFileCopyWithRetryAsync(
-            string source,
-            string destination)
+        private void RemoveLegacyFabricVersionJar(
+            string legacyJarPath)
         {
-            string? directory =
-                Path.GetDirectoryName(destination);
-
-            if (!string.IsNullOrWhiteSpace(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            string temp =
-                destination +
-                "." +
-                Guid.NewGuid().ToString("N") +
-                ".tmp";
-
             try
             {
-                using (FileStream input =
-                       new FileStream(
-                           source,
-                           FileMode.Open,
-                           FileAccess.Read,
-                           FileShare.Read))
-                {
-                    using (FileStream output =
-                           new FileStream(
-                               temp,
-                               FileMode.Create,
-                               FileAccess.Write,
-                               FileShare.None))
-                    {
-                        await input.CopyToAsync(
-                            output,
-                            81920,
-                            CancellationToken.None);
+                if (!File.Exists(legacyJarPath))
+                    return;
 
-                        await output.FlushAsync(
-                            CancellationToken.None);
-                    }
-                }
+                WriteLog(
+                    $"Removing legacy duplicate Fabric Loader JAR: {legacyJarPath}");
 
-                if (!File.Exists(temp) ||
-                    new FileInfo(temp).Length <= 0)
+                TryDeleteFileWithRetry(
+                    legacyJarPath);
+
+                if (File.Exists(legacyJarPath))
                 {
                     throw new IOException(
-                        "Temporary Fabric version JAR was not created.");
+                        $"Could not remove legacy duplicate Fabric Loader JAR: {legacyJarPath}");
                 }
 
-                await Task.Delay(100);
-
-                await MoveFileWithRetryAsync(
-                    temp,
-                    destination);
+                WriteLog(
+                    "Legacy duplicate Fabric Loader JAR removed.");
             }
-            finally
+            catch (Exception ex)
             {
-                TryDeleteFileWithRetry(temp);
+                WriteException(
+                    "LEGACY FABRIC DUPLICATE CLEANUP ERROR",
+                    ex);
+
+                throw;
             }
         }
+
+        // ============================================================
+        // SAFE FILE COPY
+        // ============================================================
 
         // ============================================================
         // JAVA
@@ -2473,10 +2431,17 @@ namespace TopuLauncher
                         fabricDirectory,
                         fabricVersion + ".json");
 
-                string fabricJar =
+                string legacyFabricJar =
                     Path.Combine(
                         fabricDirectory,
                         fabricVersion + ".jar");
+
+                /*
+                 * Clean up the old launcher-generated Fabric Loader
+                 * copy before CmlLib builds the process.
+                 */
+                RemoveLegacyFabricVersionJar(
+                    legacyFabricJar);
 
                 if (!File.Exists(vanillaJson))
                 {
@@ -2506,22 +2471,6 @@ namespace TopuLauncher
                 {
                     WriteLog(
                         $"ERROR: Fabric JSON missing: {fabricJson}");
-
-                    return false;
-                }
-
-                if (!File.Exists(fabricJar))
-                {
-                    WriteLog(
-                        $"ERROR: Fabric JAR missing: {fabricJar}");
-
-                    return false;
-                }
-
-                if (new FileInfo(fabricJar).Length <= 0)
-                {
-                    WriteLog(
-                        "ERROR: Fabric JAR is empty.");
 
                     return false;
                 }
@@ -2615,7 +2564,7 @@ namespace TopuLauncher
                     $"Fabric JSON: {fabricJson}");
 
                 WriteLog(
-                    $"Fabric JAR: {fabricJar}");
+                    $"Legacy Fabric version JAR removed/absent: {legacyFabricJar}");
 
                 WriteLog(
                     "===== INSTALLATION VALIDATION PASSED =====");
@@ -2878,6 +2827,18 @@ namespace TopuLauncher
                 // BUILD
                 // ----------------------------------------------------
 
+                /*
+                 * Final safety check:
+                 * never allow the old duplicate Fabric Loader JAR to
+                 * survive into CmlLib's classpath generation.
+                 */
+                RemoveLegacyFabricVersionJar(
+                    Path.Combine(
+                        _gamePath,
+                        "versions",
+                        fabricVersion,
+                        fabricVersion + ".jar"));
+
                 StatusText.Text =
                     "Building Minecraft process...";
 
@@ -2900,9 +2861,10 @@ namespace TopuLauncher
                 }
 
                 /*
-                 * DO NOT MODIFY process.StartInfo.Arguments.
+                 * Do not manually rewrite the generated classpath.
                  *
-                 * CmlLib has generated the correct Fabric classpath.
+                 * The legacy duplicate Fabric Loader JAR has already
+                 * been removed before CmlLib builds the process.
                  */
                 LogFabricClasspath(
                     process,
@@ -3062,13 +3024,20 @@ namespace TopuLauncher
                         StringComparison.OrdinalIgnoreCase);
 
                 WriteLog(
-                    $"Fabric version JAR: {fabricVersionJar}");
+                    $"Legacy Fabric version JAR: {fabricVersionJar}");
 
                 WriteLog(
-                    $"Fabric version JAR present in arguments: {versionPresent}");
+                    $"Legacy Fabric version JAR present in arguments: {versionPresent}");
+
+                if (versionPresent)
+                {
+                    throw new InvalidOperationException(
+                        "CmlLib generated a duplicate Fabric Loader JAR on the classpath. " +
+                        "The legacy Fabric version JAR must not be used.");
+                }
 
                 WriteLog(
-                    "Fabric classpath left untouched.");
+                    "Fabric classpath contains only the library Fabric Loader copy.");
 
                 WriteLog(
                     "===== FABRIC CLASSPATH CHECK COMPLETE =====");
