@@ -47,14 +47,15 @@ namespace TopuLauncher
             "26.2"
         };
 
-        private static readonly (string Slug, string Name)[] PerformanceMods =
-        {
-            ("sodium", "Sodium"),
-            ("lithium", "Lithium"),
-            ("dynamic-fps", "Dynamic FPS"),
-            ("sodium-extra", "Sodium Extra"),
-            ("krypton", "Krypton")
-        };
+     private static readonly (string Slug, string Name)[] PerformanceMods =
+{
+    ("fabric-api", "Fabric API"),
+    ("sodium", "Sodium"),
+    ("lithium", "Lithium"),
+    ("dynamic-fps", "Dynamic FPS"),
+    ("sodium-extra", "Sodium Extra"),
+    ("krypton", "Krypton")
+};
 
         public MainWindow()
         {
