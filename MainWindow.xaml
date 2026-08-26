@@ -155,7 +155,7 @@
                                    Foreground="#888"
                                    Margin="0,0,0,20"/>
 
-                        <TextBlock Text="Username / Cracked Nickname:"
+                        <TextBlock Text="Username / offline name:"
                                    Foreground="#CCC"
                                    Margin="0,0,0,5"/>
 
@@ -355,7 +355,7 @@
                                    Foreground="White"
                                    Margin="0,0,0,10"/>
 
-                        <TextBlock Text="Choose between offline play or an official Microsoft account."
+                        <TextBlock Text="Choose between offline play or an Microsoft account."
                                    Foreground="#888"
                                    Margin="0,0,0,20"/>
 
@@ -371,8 +371,8 @@
                                   HorizontalAlignment="Left"
                                   SelectionChanged="AuthTypeBox_SelectionChanged">
 
-                            <ComboBoxItem Content="Offline / Cracked Mode"/>
-                            <ComboBoxItem Content="Microsoft Official Account"/>
+                            <ComboBoxItem Content="Offline "/>
+                            <ComboBoxItem Content="Microsoft Account"/>
 
                         </ComboBox>
 
