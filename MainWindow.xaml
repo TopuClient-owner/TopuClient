@@ -5,569 +5,245 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Topu Client"
-        Width="1100"
-        Height="700"
-        MinWidth="950"
-        MinHeight="600"
+        Icon="Assets/TopuLauncher.ico"
+        Height="560"
+        Width="800"
+        MinHeight="560"
+        MinWidth="800"
+        WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        ResizeMode="CanResize"
-        Background="#0D0D0D"
-        Foreground="White">
-
-    <Window.Resources>
-
-        <!-- ===================================================== -->
-        <!-- COLORS -->
-        <!-- ===================================================== -->
-
-        <SolidColorBrush x:Key="BackgroundBrush"
-                         Color="#0D0D0D"/>
-
-        <SolidColorBrush x:Key="PanelBrush"
-                         Color="#151515"/>
-
-        <SolidColorBrush x:Key="Panel2Brush"
-                         Color="#1B1B1B"/>
-
-        <SolidColorBrush x:Key="BorderBrush"
-                         Color="#292929"/>
-
-        <SolidColorBrush x:Key="AccentBrush"
-                         Color="#00FF88"/>
-
-        <SolidColorBrush x:Key="MutedTextBrush"
-                         Color="#888888"/>
-
-        <!-- ===================================================== -->
-        <!-- BUTTON -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="TopuButton"
-               TargetType="Button">
-
-            <Setter Property="Background"
-                    Value="#191919"/>
-
-            <Setter Property="Foreground"
-                    Value="White"/>
-
-            <Setter Property="BorderBrush"
-                    Value="#303030"/>
-
-            <Setter Property="BorderThickness"
-                    Value="1"/>
-
-            <Setter Property="Padding"
-                    Value="14,8"/>
-
-            <Setter Property="FontSize"
-                    Value="14"/>
-
-            <Setter Property="Cursor"
-                    Value="Hand"/>
-
-            <Setter Property="Template">
-
-                <Setter.Value>
-
-                    <ControlTemplate TargetType="Button">
-
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6">
-
-                            <ContentPresenter
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"/>
-
-                        </Border>
-
-                    </ControlTemplate>
-
-                </Setter.Value>
-
-            </Setter>
-
-            <Style.Triggers>
-
-                <Trigger Property="IsMouseOver"
-                         Value="True">
-
-                    <Setter Property="Background"
-                            Value="#222222"/>
-
-                    <Setter Property="BorderBrush"
-                            Value="#00AA66"/>
-
-                </Trigger>
-
-                <Trigger Property="IsEnabled"
-                         Value="False">
-
-                    <Setter Property="Opacity"
-                            Value="0.45"/>
-
-                </Trigger>
-
-            </Style.Triggers>
-
-        </Style>
-
-        <!-- ===================================================== -->
-        <!-- ACCENT BUTTON -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="AccentButton"
-               TargetType="Button"
-               BasedOn="{StaticResource TopuButton}">
-
-            <Setter Property="Background"
-                    Value="#00D977"/>
-
-            <Setter Property="Foreground"
-                    Value="#06110B"/>
-
-            <Setter Property="FontWeight"
-                    Value="Bold"/>
-
-            <Setter Property="BorderBrush"
-                    Value="#00FF88"/>
-
-        </Style>
-
-        <!-- ===================================================== -->
-        <!-- NAV BUTTON -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="NavButton"
-               TargetType="Button">
-
-            <Setter Property="Background"
-                    Value="Transparent"/>
-
-            <Setter Property="Foreground"
-                    Value="#888888"/>
-
-            <Setter Property="BorderThickness"
-                    Value="0"/>
-
-            <Setter Property="Padding"
-                    Value="18,12"/>
-
-            <Setter Property="FontSize"
-                    Value="14"/>
-
-            <Setter Property="Cursor"
-                    Value="Hand"/>
-
-            <Setter Property="HorizontalContentAlignment"
-                    Value="Left"/>
-
-            <Style.Triggers>
-
-                <Trigger Property="IsMouseOver"
-                         Value="True">
-
-                    <Setter Property="Foreground"
-                            Value="#00FF88"/>
-
-                </Trigger>
-
-            </Style.Triggers>
-
-        </Style>
-
-        <!-- ===================================================== -->
-        <!-- TEXTBOX -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="TopuTextBox"
-               TargetType="TextBox">
-
-            <Setter Property="Background"
-                    Value="#101010"/>
-
-            <Setter Property="Foreground"
-                    Value="White"/>
-
-            <Setter Property="BorderBrush"
-                    Value="#303030"/>
-
-            <Setter Property="BorderThickness"
-                    Value="1"/>
-
-            <Setter Property="Padding"
-                    Value="10"/>
-
-            <Setter Property="FontSize"
-                    Value="14"/>
-
-        </Style>
-
-        <!-- ===================================================== -->
-        <!-- COMBOBOX -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="TopuComboBox"
-               TargetType="ComboBox">
-
-            <Setter Property="Background"
-                    Value="#101010"/>
-
-            <Setter Property="Foreground"
-                    Value="White"/>
-
-            <Setter Property="BorderBrush"
-                    Value="#303030"/>
-
-            <Setter Property="BorderThickness"
-                    Value="1"/>
-
-            <Setter Property="Padding"
-                    Value="8"/>
-
-            <Setter Property="FontSize"
-                    Value="14"/>
-
-        </Style>
-
-        <!-- ===================================================== -->
-        <!-- LISTBOX -->
-        <!-- ===================================================== -->
-
-        <Style x:Key="TopuListBox"
-               TargetType="ListBox">
-
-            <Setter Property="Background"
-                    Value="Transparent"/>
-
-            <Setter Property="BorderThickness"
-                    Value="0"/>
-
-            <Setter Property="Foreground"
-                    Value="White"/>
-
-        </Style>
-
-        <Style TargetType="ListBoxItem">
-
-            <Setter Property="Padding"
-                    Value="12"/>
-
-            <Setter Property="Margin"
-                    Value="0,3"/>
-
-            <Setter Property="Background"
-                    Value="#151515"/>
-
-            <Setter Property="Foreground"
-                    Value="White"/>
-
-            <Setter Property="HorizontalContentAlignment"
-                    Value="Stretch"/>
-
-            <Style.Triggers>
-
-                <Trigger Property="IsSelected"
-                         Value="True">
-
-                    <Setter Property="Background"
-                            Value="#193D2D"/>
-
-                    <Setter Property="BorderBrush"
-                            Value="#00FF88"/>
-
-                </Trigger>
-
-                <Trigger Property="IsMouseOver"
-                         Value="True">
-
-                    <Setter Property="Background"
-                            Value="#202020"/>
-
-                </Trigger>
-
-            </Style.Triggers>
-
-        </Style>
-
-    </Window.Resources>
-
-
-    <!-- ========================================================= -->
-    <!-- ROOT -->
-    <!-- ========================================================= -->
-
-    <Grid Background="{StaticResource BackgroundBrush}">
-
-        <Grid.RowDefinitions>
-
-            <RowDefinition Height="52"/>
-
-            <RowDefinition Height="*"/>
-
-            <RowDefinition Height="34"/>
-
-        </Grid.RowDefinitions>
-
-
-        <!-- ===================================================== -->
-        <!-- TITLE BAR -->
-        <!-- ===================================================== -->
-
-        <Border Grid.Row="0"
-                Background="#111111"
-                BorderBrush="#252525"
-                BorderThickness="0,0,0,1"
-                MouseDown="TitleBar_MouseDown">
-
-            <Grid>
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <Border Background="#121214"
+            CornerRadius="12"
+            BorderBrush="#2A2A2E"
+            BorderThickness="1">
+
+        <Grid>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="35"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="30"/>
+            </Grid.RowDefinitions>
+
+            <!-- ===================================================== -->
+            <!-- TITLE BAR -->
+            <!-- ===================================================== -->
+
+            <Grid Grid.Row="0"
+                  Background="#18181C"
+                  MouseDown="TitleBar_MouseDown">
 
                 <Grid.ColumnDefinitions>
-
                     <ColumnDefinition Width="*"/>
-
                     <ColumnDefinition Width="Auto"/>
-
-                    <ColumnDefinition Width="Auto"/>
-
                 </Grid.ColumnDefinitions>
 
-
-                <StackPanel Grid.Column="0"
-                            Orientation="Horizontal"
+                <StackPanel Orientation="Horizontal"
                             VerticalAlignment="Center"
-                            Margin="18,0">
+                            Margin="12,0,0,0">
 
-                    <TextBlock Text="TOPU"
-                               FontSize="20"
+                    <TextBlock Text="⚡ TOPU CLIENT"
+                               Foreground="#00FF88"
                                FontWeight="Bold"
-                               Foreground="{StaticResource AccentBrush}"/>
-
-                    <TextBlock Text=" CLIENT"
-                               FontSize="20"
-                               FontWeight="Bold"
-                               Foreground="White"/>
-
-                    <TextBlock Text="  •  Multi Profile"
-                               FontSize="12"
-                               Foreground="#666666"
-                               VerticalAlignment="Center"
-                               Margin="8,4,0,0"/>
+                               FontSize="14"/>
 
                 </StackPanel>
 
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal">
 
-                <Button Grid.Column="1"
-                        Content="—"
-                        Width="46"
-                        Height="52"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="#AAAAAA"
-                        Click="Minimize_Click"/>
+                    <Button Content="—"
+                            Width="40"
+                            Height="35"
+                            Background="Transparent"
+                            Foreground="#888"
+                            BorderThickness="0"
+                            FontSize="16"
+                            Click="Minimize_Click"/>
 
+                    <Button Content="✕"
+                            Width="40"
+                            Height="35"
+                            Background="Transparent"
+                            Foreground="#888"
+                            BorderThickness="0"
+                            FontSize="14"
+                            Click="Close_Click"/>
 
-                <Button Grid.Column="2"
-                        Content="✕"
-                        Width="46"
-                        Height="52"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="#AAAAAA"
-                        Click="Close_Click"/>
+                </StackPanel>
 
             </Grid>
 
-        </Border>
+            <!-- ===================================================== -->
+            <!-- MAIN -->
+            <!-- ===================================================== -->
 
+            <Grid Grid.Row="1">
 
-        <!-- ===================================================== -->
-        <!-- MAIN -->
-        <!-- ===================================================== -->
-
-        <Grid Grid.Row="1">
-
-            <Grid.ColumnDefinitions>
-
-                <ColumnDefinition Width="190"/>
-
-                <ColumnDefinition Width="*"/>
-
-            </Grid.ColumnDefinitions>
-
-
-            <!-- ================================================= -->
-            <!-- SIDEBAR -->
-            <!-- ================================================= -->
-
-            <Border Grid.Column="0"
-                    Background="#111111"
-                    BorderBrush="#242424"
-                    BorderThickness="0,0,1,0">
-
-                <Grid>
-
-                    <Grid.RowDefinitions>
-
-                        <RowDefinition Height="*"/>
-
-                        <RowDefinition Height="Auto"/>
-
-                    </Grid.RowDefinitions>
-
-
-                    <StackPanel Grid.Row="0"
-                                Margin="10,18">
-
-
-                        <Button x:Name="TabLaunchBtn"
-                                Content="🎮  Launch"
-                                Tag="TabLaunch"
-                                Style="{StaticResource NavButton}"
-                                Foreground="{StaticResource AccentBrush}"
-                                Click="SwitchTab_Click"/>
-
-
-                        <Button x:Name="TabProfilesBtn"
-                                Content="👤  Profiles"
-                                Tag="TabProfiles"
-                                Style="{StaticResource NavButton}"
-                                Click="SwitchTab_Click"/>
-
-
-                        <Button x:Name="TabModsBtn"
-                                Content="🧩  Mods"
-                                Tag="TabMods"
-                                Style="{StaticResource NavButton}"
-                                Click="SwitchTab_Click"/>
-
-
-                        <Button x:Name="TabAccountsBtn"
-                                Content="🔐  Accounts"
-                                Tag="TabAccounts"
-                                Style="{StaticResource NavButton}"
-                                Click="SwitchTab_Click"/>
-
-                    </StackPanel>
-
-
-                    <StackPanel Grid.Row="1"
-                                Margin="18,10,18,18">
-
-                        <TextBlock Text="STATUS"
-                                   FontSize="10"
-                                   Foreground="#666666"
-                                   FontWeight="Bold"/>
-
-                        <TextBlock x:Name="StatusText"
-                                   Text="Ready."
-                                   Foreground="#AAAAAA"
-                                   FontSize="11"
-                                   TextWrapping="Wrap"
-                                   Margin="0,5,0,0"/>
-
-                    </StackPanel>
-
-                </Grid>
-
-            </Border>
-
-
-            <!-- ================================================= -->
-            <!-- CONTENT -->
-            <!-- ================================================= -->
-
-            <Grid Grid.Column="1"
-                  Margin="28">
-
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
                 <!-- ================================================= -->
-                <!-- LAUNCH TAB -->
+                <!-- SIDEBAR -->
                 <!-- ================================================= -->
 
-                <Grid x:Name="TabLaunch"
-                      Visibility="Visible">
+                <StackPanel Grid.Column="0"
+                            Background="#161619">
 
-                    <Grid.RowDefinitions>
+                    <Button x:Name="TabLaunchBtn"
+                            Content="Launch Game"
+                            Height="45"
+                            Background="Transparent"
+                            Foreground="#00FF88"
+                            BorderBrush="#00FF88"
+                            BorderThickness="0,0,0,2"
+                            HorizontalContentAlignment="Left"
+                            Padding="15,0,0,0"
+                            Tag="TabLaunch"
+                            Click="SwitchTab_Click"/>
 
-                        <RowDefinition Height="Auto"/>
+                    <Button x:Name="TabProfilesBtn"
+                            Content="Profiles &amp; Mods"
+                            Height="45"
+                            Background="Transparent"
+                            Foreground="#888"
+                            BorderThickness="0"
+                            HorizontalContentAlignment="Left"
+                            Padding="15,0,0,0"
+                            Tag="TabProfiles"
+                            Click="SwitchTab_Click"/>
 
-                        <RowDefinition Height="*"/>
+                    <Button x:Name="TabAccountsBtn"
+                            Content="Accounts"
+                            Height="45"
+                            Background="Transparent"
+                            Foreground="#888"
+                            BorderThickness="0"
+                            HorizontalContentAlignment="Left"
+                            Padding="15,0,0,0"
+                            Tag="TabAccounts"
+                            Click="SwitchTab_Click"/>
 
-                        <RowDefinition Height="Auto"/>
+                </StackPanel>
 
-                    </Grid.RowDefinitions>
+                <!-- ================================================= -->
+                <!-- CONTENT -->
+                <!-- ================================================= -->
 
+                <Grid Grid.Column="1"
+                      Margin="20">
 
-                    <StackPanel Grid.Row="0">
+                    <!-- ============================================= -->
+                    <!-- LAUNCH TAB -->
+                    <!-- ============================================= -->
 
-                        <TextBlock Text="Launch"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
+                    <StackPanel x:Name="TabLaunch"
+                                Visibility="Visible">
 
-                        <TextBlock Text="Choose a profile and launch Minecraft."
-                                   Foreground="#777777"
-                                   Margin="0,5,0,20"/>
+                        <TextBlock Text="Welcome to Topu Client"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="White"
+                                   Margin="0,0,0,10"/>
+
+                        <TextBlock Text="High-performance client built for competitive Minecraft PvP."
+                                   Foreground="#888"
+                                   Margin="0,0,0,20"/>
+
+                        <TextBlock Text="Username / Cracked Nickname:"
+                                   Foreground="#CCC"
+                                   Margin="0,0,0,5"/>
+
+                        <TextBox x:Name="UsernameInput"
+                                 Text="TopuPlayer"
+                                 Height="35"
+                                 Background="#1E1E22"
+                                 Foreground="White"
+                                 BorderBrush="#333"
+                                 Padding="8"
+                                 VerticalContentAlignment="Center"
+                                 Margin="0,0,0,15"/>
+
+                        <TextBlock Text="Quick Server Connect:"
+                                   Foreground="#CCC"
+                                   Margin="0,0,0,5"/>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,0,20">
+
+                            <Button Content="GamerTee"
+                                    Width="100"
+                                    Height="30"
+                                    Margin="0,0,10,0"
+                                    Background="#2A2A2E"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Tag="gametee.net"
+                                    Click="JoinServer_Click"/>
+
+                            <Button Content="Sharpness.gg"
+                                    Width="110"
+                                    Height="30"
+                                    Background="#2A2A2E"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Tag="sharpness.gg"
+                                    Click="JoinServer_Click"/>
+
+                        </StackPanel>
+
+                        <Button x:Name="LaunchBtn"
+                                Content="LAUNCH FABRIC"
+                                Height="45"
+                                Background="#00FF88"
+                                Foreground="Black"
+                                FontWeight="Bold"
+                                FontSize="14"
+                                BorderThickness="0"
+                                Click="LaunchBtn_Click"/>
 
                     </StackPanel>
 
+                    <!-- ============================================= -->
+                    <!-- PROFILE TAB -->
+                    <!-- ============================================= -->
 
-                    <Grid Grid.Row="1">
+                    <StackPanel x:Name="TabProfiles"
+                                Visibility="Collapsed">
 
-                        <Grid.ColumnDefinitions>
+                        <TextBlock Text="Profile &amp; Mod Manager"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="White"
+                                   Margin="0,0,0,8"/>
 
-                            <ColumnDefinition Width="*"/>
+                        <TextBlock Text="Configure Minecraft version, RAM and Fabric mods."
+                                   Foreground="#888"
+                                   Margin="0,0,0,15"/>
 
-                            <ColumnDefinition Width="330"/>
+                        <Grid Margin="0,0,0,15">
 
-                        </Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="190"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
+                            <StackPanel Grid.Column="0">
 
-                        <!-- PROFILE CARD -->
-
-                        <Border Grid.Column="0"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="22"
-                                Margin="0,0,15,0">
-
-                            <StackPanel>
-
-                                <TextBlock Text="ACTIVE PROFILE"
-                                           FontSize="11"
-                                           Foreground="#777777"
-                                           FontWeight="Bold"/>
-
-                                <TextBlock x:Name="SelectedProfileLabel"
-                                           Text="No profile selected"
-                                           FontSize="25"
-                                           FontWeight="Bold"
-                                           Foreground="{StaticResource AccentBrush}"
-                                           Margin="0,6,0,20"/>
-
-
-                                <TextBlock Text="Profile"
-                                           Foreground="#999999"
-                                           Margin="0,0,0,6"/>
-
-                                <ComboBox x:Name="ProfileBox"
-                                          Style="{StaticResource TopuComboBox}"
-                                          SelectionChanged="ProfileBox_SelectionChanged"
-                                          Margin="0,0,0,18"/>
-
-
-                                <TextBlock Text="Minecraft Version"
-                                           Foreground="#999999"
-                                           Margin="0,0,0,6"/>
+                                <TextBlock Text="Minecraft Version:"
+                                           Foreground="#CCC"
+                                           Margin="0,0,0,5"/>
 
                                 <ComboBox x:Name="VersionBox"
-                                          Style="{StaticResource TopuComboBox}"
+                                          Width="170"
+                                          Height="30"
                                           SelectedIndex="0"
-                                          SelectionChanged="VersionBox_SelectionChanged">
+                                          HorizontalAlignment="Left">
 
                                     <ComboBoxItem Content="1.21.1"/>
                                     <ComboBoxItem Content="1.21.4"/>
@@ -578,629 +254,163 @@
 
                                 </ComboBox>
 
+                            </StackPanel>
 
-                                <TextBlock Text="RAM Allocation"
-                                           Foreground="#999999"
-                                           Margin="0,20,0,6"/>
+                            <StackPanel Grid.Column="1">
 
-                                <Grid>
+                                <TextBlock Text="Allocated RAM:"
+                                           Foreground="#CCC"
+                                           Margin="0,0,0,5"/>
 
-                                    <Grid.ColumnDefinitions>
-
-                                        <ColumnDefinition Width="*"/>
-
-                                        <ColumnDefinition Width="70"/>
-
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
 
                                     <Slider x:Name="RamSlider"
-                                            Grid.Column="0"
+                                            Width="180"
                                             Minimum="2"
-                                            Maximum="16"
+                                            Maximum="12"
+                                            Value="4"
                                             TickFrequency="1"
                                             IsSnapToTickEnabled="True"
-                                            Value="4"
-                                            ValueChanged="RamSlider_ValueChanged"/>
+                                            ValueChanged="RamSlider_ValueChanged"
+                                            VerticalAlignment="Center"/>
 
                                     <TextBlock x:Name="RamLabel"
-                                               Grid.Column="1"
                                                Text="4GB"
-                                               HorizontalAlignment="Right"
-                                               Foreground="{StaticResource AccentBrush}"
-                                               FontWeight="Bold"/>
-
-                                </Grid>
-
-                            </StackPanel>
-
-                        </Border>
-
-
-                        <!-- ACCOUNT / USER CARD -->
-
-                        <Border Grid.Column="1"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="20">
-
-                            <StackPanel>
-
-                                <TextBlock Text="ACCOUNT"
-                                           FontSize="11"
-                                           Foreground="#777777"
-                                           FontWeight="Bold"/>
-
-                                <TextBlock Text="Username"
-                                           Foreground="#999999"
-                                           Margin="0,18,0,6"/>
-
-                                <TextBox x:Name="UsernameInput"
-                                         Style="{StaticResource TopuTextBox}"
-                                         Text="TopuPlayer"/>
-
-
-                                <TextBlock Text="Authentication"
-                                           Foreground="#999999"
-                                           Margin="0,18,0,6"/>
-
-                                <ComboBox x:Name="AuthTypeBox"
-                                          Style="{StaticResource TopuComboBox}"
-                                          SelectedIndex="0"
-                                          SelectionChanged="AuthTypeBox_SelectionChanged">
-
-                                    <ComboBoxItem Content="Offline"/>
-                                    <ComboBoxItem Content="Microsoft"/>
-
-                                </ComboBox>
-
-
-                                <Button x:Name="MsLoginBtn"
-                                        Content="Microsoft Login"
-                                        Style="{StaticResource TopuButton}"
-                                        Click="MsLoginBtn_Click"
-                                        Margin="0,15,0,0"/>
-
-                            </StackPanel>
-
-                        </Border>
-
-                    </Grid>
-
-
-                    <Grid Grid.Row="2"
-                          Margin="0,18,0,0">
-
-                        <Grid.ColumnDefinitions>
-
-                            <ColumnDefinition Width="*"/>
-
-                            <ColumnDefinition Width="Auto"/>
-
-                        </Grid.ColumnDefinitions>
-
-
-                        <TextBlock Grid.Column="0"
-                                   Text="Fabric + performance mods will use the selected profile."
-                                   Foreground="#666666"
-                                   VerticalAlignment="Center"/>
-
-
-                        <Button x:Name="LaunchBtn"
-                                Grid.Column="1"
-                                Content="LAUNCH MINECRAFT"
-                                Width="220"
-                                Height="48"
-                                Style="{StaticResource AccentButton}"
-                                Click="LaunchBtn_Click"/>
-
-                    </Grid>
-
-                </Grid>
-
-
-                <!-- ================================================= -->
-                <!-- PROFILES TAB -->
-                <!-- ================================================= -->
-
-                <Grid x:Name="TabProfiles"
-                      Visibility="Collapsed">
-
-                    <Grid.RowDefinitions>
-
-                        <RowDefinition Height="Auto"/>
-
-                        <RowDefinition Height="*"/>
-
-                        <RowDefinition Height="Auto"/>
-
-                    </Grid.RowDefinitions>
-
-
-                    <StackPanel Grid.Row="0">
-
-                        <TextBlock Text="Profiles"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
-
-                        <TextBlock Text="Each profile has its own Minecraft settings and mods."
-                                   Foreground="#777777"
-                                   Margin="0,5,0,20"/>
-
-                    </StackPanel>
-
-
-                    <Grid Grid.Row="1">
-
-                        <Grid.ColumnDefinitions>
-
-                            <ColumnDefinition Width="280"/>
-
-                            <ColumnDefinition Width="*"/>
-
-                        </Grid.ColumnDefinitions>
-
-
-                        <!-- PROFILE LIST -->
-
-                        <Border Grid.Column="0"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="12"
-                                Margin="0,0,15,0">
-
-                            <Grid>
-
-                                <Grid.RowDefinitions>
-
-                                    <RowDefinition Height="Auto"/>
-
-                                    <RowDefinition Height="*"/>
-
-                                </Grid.RowDefinitions>
-
-
-                                <TextBlock Grid.Row="0"
-                                           Text="YOUR PROFILES"
-                                           FontSize="11"
-                                           Foreground="#777777"
-                                           FontWeight="Bold"
-                                           Margin="4,3,4,10"/>
-
-
-                                <ListBox x:Name="ProfilesList"
-                                         Grid.Row="1"
-                                         Style="{StaticResource TopuListBox}"
-                                         SelectionChanged="ProfilesList_SelectionChanged"/>
-
-                            </Grid>
-
-                        </Border>
-
-
-                        <!-- PROFILE EDITOR -->
-
-                        <Border Grid.Column="1"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="24">
-
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-
-                                <StackPanel>
-
-                                    <TextBlock Text="PROFILE SETTINGS"
-                                               FontSize="11"
-                                               Foreground="#777777"
-                                               FontWeight="Bold"/>
-
-
-                                    <TextBox x:Name="ProfileNameInput"
-                                             Style="{StaticResource TopuTextBox}"
-                                             FontSize="22"
-                                             FontWeight="Bold"
-                                             Margin="0,8,0,20"/>
-
-
-                                    <TextBlock Text="Minecraft Version"
-                                               Foreground="#999999"
-                                               Margin="0,0,0,6"/>
-
-                                    <ComboBox x:Name="ProfileVersionBox"
-                                              Style="{StaticResource TopuComboBox}"
-                                              SelectionChanged="ProfileVersionBox_SelectionChanged">
-
-                                        <ComboBoxItem Content="1.21.1"/>
-                                        <ComboBoxItem Content="1.21.4"/>
-                                        <ComboBoxItem Content="1.21.8"/>
-                                        <ComboBoxItem Content="1.21.11"/>
-                                        <ComboBoxItem Content="26.1.2"/>
-                                        <ComboBoxItem Content="26.2"/>
-
-                                    </ComboBox>
-
-
-                                    <TextBlock Text="RAM"
-                                               Foreground="#999999"
-                                               Margin="0,20,0,6"/>
-
-                                    <Grid>
-
-                                        <Grid.ColumnDefinitions>
-
-                                            <ColumnDefinition Width="*"/>
-
-                                            <ColumnDefinition Width="70"/>
-
-                                        </Grid.ColumnDefinitions>
-
-                                        <Slider x:Name="ProfileRamSlider"
-                                                Grid.Column="0"
-                                                Minimum="2"
-                                                Maximum="16"
-                                                TickFrequency="1"
-                                                IsSnapToTickEnabled="True"
-                                                Value="4"
-                                                ValueChanged="ProfileRamSlider_ValueChanged"/>
-
-                                        <TextBlock x:Name="ProfileRamLabel"
-                                                   Grid.Column="1"
-                                                   Text="4GB"
-                                                   HorizontalAlignment="Right"
-                                                   Foreground="{StaticResource AccentBrush}"
-                                                   FontWeight="Bold"/>
-
-                                    </Grid>
-
-
-                                    <TextBlock Text="Profile Folder"
-                                               Foreground="#999999"
-                                               Margin="0,20,0,6"/>
-
-                                    <TextBlock x:Name="ProfileFolderLabel"
-                                               Text="Not selected"
-                                               Foreground="#666666"
-                                               TextWrapping="Wrap"/>
-
-
-                                    <TextBlock Text="Installed Mods"
-                                               Foreground="#999999"
-                                               Margin="0,20,0,6"/>
-
-                                    <TextBlock x:Name="ProfileModCountLabel"
-                                               Text="0 mods"
-                                               Foreground="{StaticResource AccentBrush}"/>
+                                               Foreground="#00FF88"
+                                               FontWeight="Bold"
+                                               Margin="10,0,0,0"
+                                               VerticalAlignment="Center"/>
 
                                 </StackPanel>
 
-                            </ScrollViewer>
+                            </StackPanel>
 
-                        </Border>
+                        </Grid>
 
-                    </Grid>
+                        <TextBlock Text="Add Mod via Modrinth API:"
+                                   Foreground="#CCC"
+                                   Margin="0,0,0,5"/>
 
+                        <Grid Margin="0,0,0,8">
 
-                    <StackPanel Grid.Row="2"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <Button Content="NEW PROFILE"
-                                Style="{StaticResource TopuButton}"
-                                Click="NewProfile_Click"
-                                Margin="0,0,8,0"/>
+                            <TextBox x:Name="ModSearchInput"
+                                     Height="30"
+                                     Background="#1E1E22"
+                                     Foreground="White"
+                                     BorderBrush="#333"
+                                     Padding="8"
+                                     VerticalContentAlignment="Center"/>
 
-                        <Button Content="SAVE PROFILE"
-                                Style="{StaticResource AccentButton}"
+                            <Button Grid.Column="1"
+                                    Content="Search &amp; Add Mod"
+                                    Width="130"
+                                    Height="30"
+                                    Margin="10,0,0,0"
+                                    Background="#00FF88"
+                                    Foreground="Black"
+                                    FontWeight="Bold"
+                                    BorderThickness="0"
+                                    Click="SearchModrinth_Click"/>
+
+                        </Grid>
+
+                        <TextBlock x:Name="SelectedProfileLabel"
+                                   Text="Ready to launch Fabric 1.21.1"
+                                   Foreground="#00FF88"
+                                   Margin="0,0,0,8"
+                                   FontSize="12"/>
+
+                        <TextBlock x:Name="ModSearchStatus"
+                                   Text="Optimization stack installs automatically."
+                                   Foreground="#888"
+                                   Margin="0,0,0,10"
+                                   FontSize="11"/>
+
+                        <Button Content="Save Profile Settings"
+                                Width="150"
+                                Height="32"
+                                Background="#2A2A2E"
+                                Foreground="White"
+                                BorderThickness="0"
                                 Click="SaveProfile_Click"
-                                Margin="0,0,8,0"/>
-
-                        <Button Content="DELETE PROFILE"
-                                Style="{StaticResource TopuButton}"
-                                Click="DeleteProfile_Click"/>
+                                HorizontalAlignment="Left"/>
 
                     </StackPanel>
 
-                </Grid>
+                    <!-- ============================================= -->
+                    <!-- ACCOUNTS TAB -->
+                    <!-- ============================================= -->
 
+                    <StackPanel x:Name="TabAccounts"
+                                Visibility="Collapsed">
 
-                <!-- ================================================= -->
-                <!-- MODS TAB -->
-                <!-- ================================================= -->
+                        <TextBlock Text="Account Manager"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="White"
+                                   Margin="0,0,0,10"/>
 
-                <Grid x:Name="TabMods"
-                      Visibility="Collapsed">
+                        <TextBlock Text="Choose between offline play or an official Microsoft account."
+                                   Foreground="#888"
+                                   Margin="0,0,0,20"/>
 
-                    <Grid.RowDefinitions>
+                        <TextBlock Text="Authentication Mode:"
+                                   Foreground="#CCC"
+                                   Margin="0,0,0,5"/>
 
-                        <RowDefinition Height="Auto"/>
+                        <ComboBox x:Name="AuthTypeBox"
+                                  Width="220"
+                                  Height="30"
+                                  SelectedIndex="0"
+                                  Margin="0,0,0,15"
+                                  HorizontalAlignment="Left"
+                                  SelectionChanged="AuthTypeBox_SelectionChanged">
 
-                        <RowDefinition Height="Auto"/>
+                            <ComboBoxItem Content="Offline / Cracked Mode"/>
+                            <ComboBoxItem Content="Microsoft Official Account"/>
 
-                        <RowDefinition Height="*"/>
+                        </ComboBox>
 
-                    </Grid.RowDefinitions>
-
-
-                    <StackPanel Grid.Row="0">
-
-                        <TextBlock Text="Mods"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
-
-                        <TextBlock x:Name="ModsProfileLabel"
-                                   Text="Mods for selected profile"
-                                   Foreground="#777777"
-                                   Margin="0,5,0,20"/>
+                        <Button x:Name="MsLoginBtn"
+                                Content="Login with Microsoft"
+                                Width="180"
+                                Height="35"
+                                Background="#00A4EF"
+                                Foreground="White"
+                                FontWeight="Bold"
+                                BorderThickness="0"
+                                Click="MsLoginBtn_Click"
+                                HorizontalAlignment="Left"/>
 
                     </StackPanel>
-
-
-                    <!-- SEARCH -->
-
-                    <Grid Grid.Row="1"
-                          Margin="0,0,0,15">
-
-                        <Grid.ColumnDefinitions>
-
-                            <ColumnDefinition Width="*"/>
-
-                            <ColumnDefinition Width="150"/>
-
-                        </Grid.ColumnDefinitions>
-
-
-                        <TextBox x:Name="ModSearchInput"
-                                 Grid.Column="0"
-                                 Style="{StaticResource TopuTextBox}"
-                                 Text=""
-                                 ToolTip="Search Modrinth for a mod"/>
-
-
-                        <Button Grid.Column="1"
-                                Content="SEARCH + INSTALL"
-                                Style="{StaticResource AccentButton}"
-                                Click="SearchModrinth_Click"
-                                Margin="10,0,0,0"/>
-
-                    </Grid>
-
-
-                    <!-- MOD CONTENT -->
-
-                    <Grid Grid.Row="2">
-
-                        <Grid.ColumnDefinitions>
-
-                            <ColumnDefinition Width="*"/>
-
-                            <ColumnDefinition Width="280"/>
-
-                        </Grid.ColumnDefinitions>
-
-
-                        <Border Grid.Column="0"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="18"
-                                Margin="0,0,15,0">
-
-                            <StackPanel>
-
-                                <TextBlock Text="PERFORMANCE PACK"
-                                           FontSize="11"
-                                           Foreground="#777777"
-                                           FontWeight="Bold"/>
-
-                                <TextBlock Text="Topu Performance Mods"
-                                           FontSize="20"
-                                           FontWeight="Bold"
-                                           Margin="0,5,0,15"/>
-
-                                <CheckBox x:Name="SodiumCheck"
-                                          Content="Sodium"
-                                          IsChecked="True"
-                                          Foreground="White"
-                                          Margin="0,5"/>
-
-                                <CheckBox x:Name="LithiumCheck"
-                                          Content="Lithium"
-                                          IsChecked="True"
-                                          Foreground="White"
-                                          Margin="0,5"/>
-
-                                <CheckBox x:Name="DynamicFpsCheck"
-                                          Content="Dynamic FPS"
-                                          IsChecked="True"
-                                          Foreground="White"
-                                          Margin="0,5"/>
-
-                                <CheckBox x:Name="SodiumExtraCheck"
-                                          Content="Sodium Extra"
-                                          IsChecked="True"
-                                          Foreground="White"
-                                          Margin="0,5"/>
-
-                                <CheckBox x:Name="KryptonCheck"
-                                          Content="Krypton"
-                                          IsChecked="True"
-                                          Foreground="White"
-                                          Margin="0,5"/>
-
-                                <Button Content="APPLY PERFORMANCE PACK"
-                                        Style="{StaticResource AccentButton}"
-                                        Click="ApplyPerformanceMods_Click"
-                                        Margin="0,20,0,0"/>
-
-                            </StackPanel>
-
-                        </Border>
-
-
-                        <Border Grid.Column="1"
-                                Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="18">
-
-                            <StackPanel>
-
-                                <TextBlock Text="PROFILE MODS"
-                                           FontSize="11"
-                                           Foreground="#777777"
-                                           FontWeight="Bold"/>
-
-                                <TextBlock x:Name="ModSearchStatus"
-                                           Text="No search yet."
-                                           Foreground="#AAAAAA"
-                                           TextWrapping="Wrap"
-                                           Margin="0,12,0,0"/>
-
-                                <TextBlock Text="Installed"
-                                           Foreground="#777777"
-                                           Margin="0,25,0,5"/>
-
-                                <TextBlock x:Name="InstalledModsLabel"
-                                           Text="0 mods"
-                                           FontSize="22"
-                                           FontWeight="Bold"
-                                           Foreground="{StaticResource AccentBrush}"/>
-
-                            </StackPanel>
-
-                        </Border>
-
-                    </Grid>
-
-                </Grid>
-
-
-                <!-- ================================================= -->
-                <!-- ACCOUNTS TAB -->
-                <!-- ================================================= -->
-
-                <Grid x:Name="TabAccounts"
-                      Visibility="Collapsed">
-
-                    <Grid.RowDefinitions>
-
-                        <RowDefinition Height="Auto"/>
-
-                        <RowDefinition Height="*"/>
-
-                    </Grid.RowDefinitions>
-
-
-                    <StackPanel Grid.Row="0">
-
-                        <TextBlock Text="Accounts"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
-
-                        <TextBlock Text="Manage the account used by Topu Client."
-                                   Foreground="#777777"
-                                   Margin="0,5,0,20"/>
-
-                    </StackPanel>
-
-
-                    <Border Grid.Row="1"
-                            Background="{StaticResource PanelBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="10"
-                            Padding="24"
-                            MaxWidth="600"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Top">
-
-                        <StackPanel>
-
-                            <TextBlock Text="OFFLINE ACCOUNT"
-                                       FontSize="11"
-                                       Foreground="#777777"
-                                       FontWeight="Bold"/>
-
-
-                            <TextBlock Text="Username"
-                                       Foreground="#999999"
-                                       Margin="0,20,0,6"/>
-
-                            <TextBox x:Name="AccountUsernameInput"
-                                     Style="{StaticResource TopuTextBox}"/>
-
-
-                            <Button Content="SAVE ACCOUNT"
-                                    Style="{StaticResource AccentButton}"
-                                    Click="SaveAccount_Click"
-                                    Margin="0,15,0,0"/>
-
-
-                            <Separator Margin="0,25"/>
-
-
-                            <TextBlock Text="MICROSOFT"
-                                       FontSize="11"
-                                       Foreground="#777777"
-                                       FontWeight="Bold"/>
-
-                            <TextBlock Text="Microsoft authentication will be connected here."
-                                       Foreground="#777777"
-                                       TextWrapping="Wrap"
-                                       Margin="0,8,0,12"/>
-
-                            <Button Content="MICROSOFT LOGIN"
-                                    Style="{StaticResource TopuButton}"
-                                    Click="MsLoginBtn_Click"/>
-
-                        </StackPanel>
-
-                    </Border>
 
                 </Grid>
 
             </Grid>
+
+            <!-- ===================================================== -->
+            <!-- FOOTER -->
+            <!-- ===================================================== -->
+
+            <Border Grid.Row="2"
+                    Background="#101012"
+                    Padding="10,0">
+
+                <TextBlock x:Name="StatusText"
+                           Text="Ready."
+                           Foreground="#888"
+                           VerticalAlignment="Center"
+                           FontSize="11"/>
+
+            </Border>
 
         </Grid>
 
-
-        <!-- ===================================================== -->
-        <!-- FOOTER -->
-        <!-- ===================================================== -->
-
-        <Border Grid.Row="2"
-                Background="#111111"
-                BorderBrush="#252525"
-                BorderThickness="0,1,0,0">
-
-            <Grid>
-
-                <TextBlock Text="Topu Client  •  Fabric Performance Launcher"
-                           Foreground="#555555"
-                           FontSize="10"
-                           VerticalAlignment="Center"
-                           Margin="15,0"/>
-
-                <TextBlock x:Name="FooterProfileText"
-                           Text="No profile"
-                           Foreground="#00AA66"
-                           FontSize="10"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Center"
-                           Margin="0,0,15,0"/>
-
-            </Grid>
-
-        </Border>
-
-    </Grid>
+    </Border>
 
 </Window>
