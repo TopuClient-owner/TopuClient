@@ -2318,6 +2318,159 @@ namespace TopuLauncher
         // LAUNCH
         // ============================================================
 
+        // ============================================================
+        // FABRIC CLASSPATH REPAIR
+        // ============================================================
+
+        private void RemoveDuplicateFabricVersionJarFromClasspath(
+            Process process,
+            string fabricVersion)
+        {
+            if (process == null)
+                throw new ArgumentNullException(nameof(process));
+
+            string arguments =
+                process.StartInfo.Arguments ?? "";
+
+            const string classpathMarker = "-cp ";
+
+            int classpathStart =
+                arguments.IndexOf(
+                    classpathMarker,
+                    StringComparison.Ordinal);
+
+            if (classpathStart < 0)
+            {
+                WriteLog(
+                    "FABRIC CLASSPATH REPAIR: No -cp argument found; nothing to repair.");
+                return;
+            }
+
+            int valueStart =
+                classpathStart + classpathMarker.Length;
+
+            int valueEnd =
+                arguments.IndexOf(
+                    " \"-D",
+                    valueStart,
+                    StringComparison.Ordinal);
+
+            if (valueEnd < 0)
+            {
+                // CmlLib normally puts the next JVM argument after the
+                // classpath as a quoted -D argument. If that format changes,
+                // fail safely instead of damaging the command line.
+                WriteLog(
+                    "FABRIC CLASSPATH REPAIR: Could not determine classpath end; classpath left unchanged.");
+                return;
+            }
+
+            string classpath =
+                arguments.Substring(
+                    valueStart,
+                    valueEnd - valueStart).Trim();
+
+            string expectedVersionJar =
+                Path.GetFullPath(
+                    Path.Combine(
+                        _gamePath,
+                        "versions",
+                        fabricVersion,
+                        fabricVersion + ".jar"));
+
+            string[] entries =
+                classpath.Split(
+                    ';',
+                    StringSplitOptions.RemoveEmptyEntries);
+
+            List<string> repairedEntries =
+                new List<string>(entries.Length);
+
+            int removed = 0;
+
+            foreach (string rawEntry in entries)
+            {
+                string entry =
+                    rawEntry.Trim().Trim('"');
+
+                bool isFabricVersionJar = false;
+
+                try
+                {
+                    isFabricVersionJar =
+                        string.Equals(
+                            Path.GetFullPath(entry),
+                            expectedVersionJar,
+                            StringComparison.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    // If an unusual classpath entry cannot be normalized,
+                    // keep it rather than accidentally deleting it.
+                }
+
+                if (!isFabricVersionJar)
+                {
+                    string expectedSuffix =
+                        Path.Combine(
+                            "versions",
+                            fabricVersion,
+                            fabricVersion + ".jar");
+
+                    string normalizedEntry =
+                        entry.Replace(
+                            Path.AltDirectorySeparatorChar,
+                            Path.DirectorySeparatorChar);
+
+                    isFabricVersionJar =
+                        normalizedEntry.EndsWith(
+                            expectedSuffix,
+                            StringComparison.OrdinalIgnoreCase);
+                }
+
+                if (isFabricVersionJar)
+                {
+                    removed++;
+                    WriteLog(
+                        $"FABRIC CLASSPATH REPAIR: Removed duplicate Fabric version JAR: {entry}");
+                    continue;
+                }
+
+                repairedEntries.Add(rawEntry);
+            }
+
+            if (removed == 0)
+            {
+                WriteLog(
+                    "FABRIC CLASSPATH REPAIR: Fabric version JAR was not present in -cp.");
+                return;
+            }
+
+            process.StartInfo.Arguments =
+                arguments.Substring(0, valueStart) +
+                string.Join(";", repairedEntries) +
+                arguments.Substring(valueEnd);
+
+            bool loaderLibraryPresent =
+                repairedEntries.Exists(
+                    entry =>
+                        entry.IndexOf(
+                            Path.Combine(
+                                "libraries",
+                                "net.fabricmc",
+                                "fabric-loader"),
+                            StringComparison.OrdinalIgnoreCase) >= 0);
+
+            WriteLog(
+                $"FABRIC CLASSPATH REPAIR: Removed {removed} duplicate Fabric version JAR entr{(removed == 1 ? "y" : "ies")}." );
+
+            WriteLog(
+                $"FABRIC CLASSPATH REPAIR: Fabric loader library retained: {loaderLibraryPresent}");
+
+            WriteLog(
+                $"FABRIC CLASSPATH REPAIR: Final classpath entries: {repairedEntries.Count}");
+        }
+
         private async void LaunchBtn_Click(
             object sender,
             RoutedEventArgs e)
@@ -2583,6 +2736,15 @@ namespace TopuLauncher
                     throw new InvalidOperationException(
                         "CmlLib returned a null Minecraft process.");
                 }
+
+                // CmlLib can put both the Fabric loader library JAR and the
+                // Fabric profile/version JAR on the classpath. Fabric Loader
+                // rejects this because both JARs contain FabricLoader.class.
+                // Keep the real loader library and remove only the duplicate
+                // version JAR from the generated -cp argument.
+                RemoveDuplicateFabricVersionJarFromClasspath(
+                    process,
+                    fabricVersion);
 
                 _minecraftProcess =
                     process;
