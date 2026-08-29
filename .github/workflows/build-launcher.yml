@@ -11,6 +11,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -30,19 +33,41 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    # Step 4: Build and Publish single-file EXE
+    # Step 4: Fix the CmlLib 3.3.1 account API before compiling
+    - name: Fix Microsoft Account Gamertag API
+      shell: pwsh
+      run: |
+        $path = 'MainWindow.xaml.cs'
+        $text = [System.IO.File]::ReadAllText($path)
+        $old = 'account.Gamertag'
+        $new = 'account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag'
+        if ($text.Contains($old)) {
+          $text = $text.Replace($old, $new)
+          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+        }
+
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add MainWindow.xaml.cs
+        git diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+          git commit -m 'Fix Microsoft account gamertag API usage'
+          git push
+        }
+
+    # Step 5: Build and Publish single-file EXE
     - name: Publish Standalone Single-File EXE
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
-    # Step 5: Upload build artifact so you can download the EXE directly from GitHub Actions
+    # Step 6: Upload build artifact so you can download the EXE directly from GitHub Actions
     - name: Upload Launcher Executable
       uses: actions/upload-artifact@v4
       with:
         name: TopuLauncher-Win64
         path: ./publish/TopuLauncher.exe
 
-    # Step 6: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
+    # Step 7: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
     - name: Create Release and Attach EXE
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
