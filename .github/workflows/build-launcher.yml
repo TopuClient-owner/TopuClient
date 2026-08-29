@@ -6,7 +6,7 @@ on:
       - main
       
     tags:
-      - 'v*' # Builds and publishes a GitHub Release when you push tags like v1.0.0
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -19,55 +19,61 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    # Step 1: Checkout repository code
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Step 2: Set up .NET 8 SDK
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 
-    # Step 3: Restore NuGet dependencies
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    # Step 4: Fix the CmlLib 3.3.1 account API before compiling
-    - name: Fix Microsoft Account Gamertag API
+    - name: Fix Microsoft Account API Compatibility
       shell: pwsh
       run: |
         $path = 'MainWindow.xaml.cs'
         $text = [System.IO.File]::ReadAllText($path)
-        $old = 'account.Gamertag'
-        $new = 'account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag'
-        if ($text.Contains($old)) {
-          $text = $text.Replace($old, $new)
-          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+
+        # CmlLib.Core.Auth.Microsoft 3.3.1 exposes the Minecraft profile
+        # through JEGameAccount.Profile, while IXboxGameAccount itself does
+        # not expose Gamertag or XboxTokens. Use reflection here so the
+        # existing MainWindow.xaml.cs remains otherwise untouched.
+        $old1 = 'string username =`n                            account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag`n                            ?? "Microsoft Account";'
+        $new1 = 'string username = "Microsoft Account";`n                        try`n                        {`n                            var profileProperty = account.GetType().GetProperty("Profile");`n                            var profile = profileProperty?.GetValue(account);`n                            var usernameProperty = profile?.GetType().GetProperty("Username");`n                            var profileUsername = usernameProperty?.GetValue(profile)?.ToString();`n                            if (!string.IsNullOrWhiteSpace(profileUsername))`n                                username = profileUsername;`n                        }`n                        catch`n                        {`n                            // Keep the safe fallback name if profile information is unavailable.`n                        }'
+
+        if ($text.Contains($old1)) {
+          $text = $text.Replace($old1, $new1)
         }
+        elseif ($text.Contains('account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag')) {
+          $text = $text.Replace('string username =`n                            account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag`n                            ?? "Microsoft Account";', $new1)
+        }
+        elseif ($text.Contains('account.Gamertag')) {
+          $text = $text.Replace('account.Gamertag', '"Microsoft Account"')
+        }
+
+        [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
 
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add MainWindow.xaml.cs
         git diff --cached --quiet
         if ($LASTEXITCODE -ne 0) {
-          git commit -m 'Fix Microsoft account gamertag API usage'
+          git commit -m 'Fix Microsoft account profile username API'
           git push
         }
 
-    # Step 5: Build and Publish single-file EXE
     - name: Publish Standalone Single-File EXE
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
-    # Step 6: Upload build artifact so you can download the EXE directly from GitHub Actions
     - name: Upload Launcher Executable
       uses: actions/upload-artifact@v4
       with:
         name: TopuLauncher-Win64
         path: ./publish/TopuLauncher.exe
 
-    # Step 7: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
     - name: Create Release and Attach EXE
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
