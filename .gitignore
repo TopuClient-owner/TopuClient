@@ -15,3 +15,5 @@ run/
 run-server/
 run-client/
 *.log
+
+# Topu Client launcher fixes are kept in MainWindow.xaml.cs
