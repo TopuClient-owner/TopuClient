@@ -21,6 +21,7 @@ using CmlLib.Core.Installers;
 using CmlLib.Core.ModLoaders.FabricMC;
 using CmlLib.Core.ProcessBuilder;
 using XboxAuthNet.Game;
+using XboxAuthNet.Game.Accounts;
 
 namespace TopuLauncher
 {
@@ -908,13 +909,13 @@ private static readonly HttpClient Http = CreateHttpClient();
             {
                 try
                 {
-                    foreach (JEGameAccount account in
+                    foreach (IXboxGameAccount account in
                              _loginHandler.AccountManager
                                 .GetAccounts()
-                                .OfType<JEGameAccount>())
+                                .OfType<IXboxGameAccount>())
                     {
                         string username =
-                            account.Profile?.Username
+                            account.Gamertag
                             ?? "Microsoft Account";
 
                         AccountSelector.Items.Add(
@@ -1395,10 +1396,10 @@ private static readonly HttpClient Http = CreateHttpClient();
             }
             else if (_loginHandler != null)
             {
-                JEGameAccount? account =
+                IXboxGameAccount? account =
                     _loginHandler.AccountManager
                         .GetAccounts()
-                        .OfType<JEGameAccount>()
+                        .OfType<IXboxGameAccount>()
                         .FirstOrDefault(
                             x =>
                                 string.Equals(
@@ -1409,7 +1410,7 @@ private static readonly HttpClient Http = CreateHttpClient();
                 if (account != null)
                 {
                     await _loginHandler.Signout(
-                        account.Value);
+                        account);
                 }
             }
 
@@ -1544,10 +1545,10 @@ private static readonly HttpClient Http = CreateHttpClient();
                 "Microsoft authentication is not initialized.");
         }
 
-        JEGameAccount? account =
+        IXboxGameAccount? account =
             _loginHandler.AccountManager
                 .GetAccounts()
-                .OfType<JEGameAccount>()
+                .OfType<IXboxGameAccount>()
                 .FirstOrDefault(
                     x =>
                         string.Equals(
@@ -1569,7 +1570,7 @@ private static readonly HttpClient Http = CreateHttpClient();
 
         MSession session =
             await _loginHandler.Authenticate(
-                account.Value);
+                account);
 
         SaveRememberedAccount(
             new LauncherAccountState
