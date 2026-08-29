@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - main
+      
     tags:
-      - 'v*'
+      - 'v*' # Builds and publishes a GitHub Release when you push tags like v1.0.0
   pull_request:
     branches:
       - main
@@ -18,68 +19,50 @@ jobs:
     runs-on: windows-latest
 
     steps:
+    # Step 1: Checkout repository code
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    # Step 2: Set up .NET 8 SDK
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 
+    # Step 3: Restore NuGet dependencies
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    - name: Fix Microsoft Account API In MainWindow.xaml.cs
+    # Temporary source patch: IXboxGameAccount exposes Identifier, while the installed 3.3.1 API does not expose Gamertag/XboxTokens.
+    - name: Fix Microsoft Account Display API
       shell: pwsh
       run: |
         $path = 'MainWindow.xaml.cs'
         $text = [System.IO.File]::ReadAllText($path)
-
-        # CmlLib.Core.Auth.Microsoft 3.3.1: IXboxGameAccount does not expose
-        # Gamertag or XboxTokens. JEGameAccount exposes Profile.Username.
-        # Replace the invalid username block without adding compatibility files.
-        $pattern = '(?s)string username\s*=\s*account\.XboxTokens\?\.XstsToken\?\.XuiClaims\?\.Gamertag\s*\?\?\s*"Microsoft Account";'
-        $replacement = @'
-string username = "Microsoft Account";
-                        if (account is JEGameAccount jeAccount)
-                        {
-                            username = jeAccount.Profile?.Username
-                                ?? "Microsoft Account";
-                        }
-'@
-
-        $updated = [regex]::Replace($text, $pattern, $replacement, 1)
-
-        if ($updated -eq $text) {
-          Write-Host 'The invalid XboxTokens username expression was not found.'
-          Write-Host 'Checking for any remaining direct Gamertag/XboxTokens references...'
-          $updated = $text -replace 'account\.Gamertag', '"Microsoft Account"'
-          $updated = $updated -replace 'account\.XboxTokens\?\.XstsToken\?\.XuiClaims\?\.Gamertag', '"Microsoft Account"'
-        }
-
-        [System.IO.File]::WriteAllText($path, $updated, [System.Text.UTF8Encoding]::new($false))
-
-        Write-Host 'Relevant Microsoft account code after patch:'
-        Select-String -Path $path -Pattern 'string username|JEGameAccount|XboxTokens|Gamertag' -Context 1,2
+        $text = $text.Replace('account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag', 'account.Identifier')
+        [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
 
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add MainWindow.xaml.cs
         if (-not (git diff --cached --quiet)) {
-          git commit -m 'Fix Microsoft account username API in MainWindow'
+          git commit -m 'Fix Microsoft account display API in MainWindow'
           git push
         }
 
+    # Step 5: Build and Publish single-file EXE
     - name: Publish Standalone Single-File EXE
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
+    # Step 6: Upload build artifact so you can download the EXE directly from GitHub Actions
     - name: Upload Launcher Executable
       uses: actions/upload-artifact@v4
       with:
         name: TopuLauncher-Win64
         path: ./publish/TopuLauncher.exe
 
+    # Step 7: Create GitHub Release if a tag is pushed
     - name: Create Release and Attach EXE
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
