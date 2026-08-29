@@ -1,6 +1,5 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/6a3f73c8-95ce-44af-8834-eac7fe951977" width="140" alt="TopuClient Logo">
-</p>
+<img width="383" height="372" alt="Screenshot 2026-08-30 011429" src="https://github.com/user-attachments/assets/dc252b69-c18c-4ab5-b4b2-603759bcb06c" />
+
 
 <h1 align="center">TopuClient</h1>
 
