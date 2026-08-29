@@ -25,6 +25,7 @@ jobs:
 
     # Step 2: Set up .NET 8 SDK
     - name: Setup .NET 8 SDK
+    
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
@@ -33,20 +34,25 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    # Temporary source patch: IXboxGameAccount exposes Identifier, while the installed 3.3.1 API does not expose Gamertag/XboxTokens.
-    - name: Fix Microsoft Account Display API
+    # Step 4: Fix the CmlLib 3.3.1 account API before compiling
+    - name: Fix Microsoft Account Gamertag API
       shell: pwsh
       run: |
         $path = 'MainWindow.xaml.cs'
         $text = [System.IO.File]::ReadAllText($path)
-        $text = $text.Replace('account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag', 'account.Identifier')
-        [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+        $old = 'account.Gamertag'
+        $new = 'account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag'
+        if ($text.Contains($old)) {
+          $text = $text.Replace($old, $new)
+          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+        }
 
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add MainWindow.xaml.cs
-        if (-not (git diff --cached --quiet)) {
-          git commit -m 'Fix Microsoft account display API in MainWindow'
+        git diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+          git commit -m 'Fix Microsoft account gamertag API usage'
           git push
         }
 
@@ -62,7 +68,7 @@ jobs:
         name: TopuLauncher-Win64
         path: ./publish/TopuLauncher.exe
 
-    # Step 7: Create GitHub Release if a tag is pushed
+    # Step 7: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
     - name: Create Release and Attach EXE
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
