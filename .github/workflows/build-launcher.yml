@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      
     tags:
       - 'v*'
   pull_request:
@@ -30,37 +29,44 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    - name: Fix Microsoft Account API Compatibility
+    - name: Fix Microsoft Account API In MainWindow.xaml.cs
       shell: pwsh
       run: |
         $path = 'MainWindow.xaml.cs'
         $text = [System.IO.File]::ReadAllText($path)
 
-        # CmlLib.Core.Auth.Microsoft 3.3.1 exposes the Minecraft profile
-        # through JEGameAccount.Profile, while IXboxGameAccount itself does
-        # not expose Gamertag or XboxTokens. Use reflection here so the
-        # existing MainWindow.xaml.cs remains otherwise untouched.
-        $old1 = 'string username =`n                            account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag`n                            ?? "Microsoft Account";'
-        $new1 = 'string username = "Microsoft Account";`n                        try`n                        {`n                            var profileProperty = account.GetType().GetProperty("Profile");`n                            var profile = profileProperty?.GetValue(account);`n                            var usernameProperty = profile?.GetType().GetProperty("Username");`n                            var profileUsername = usernameProperty?.GetValue(profile)?.ToString();`n                            if (!string.IsNullOrWhiteSpace(profileUsername))`n                                username = profileUsername;`n                        }`n                        catch`n                        {`n                            // Keep the safe fallback name if profile information is unavailable.`n                        }'
+        # CmlLib.Core.Auth.Microsoft 3.3.1: IXboxGameAccount does not expose
+        # Gamertag or XboxTokens. JEGameAccount exposes Profile.Username.
+        # Replace the invalid username block without adding compatibility files.
+        $pattern = '(?s)string username\s*=\s*account\.XboxTokens\?\.XstsToken\?\.XuiClaims\?\.Gamertag\s*\?\?\s*"Microsoft Account";'
+        $replacement = @'
+string username = "Microsoft Account";
+                        if (account is JEGameAccount jeAccount)
+                        {
+                            username = jeAccount.Profile?.Username
+                                ?? "Microsoft Account";
+                        }
+'@
 
-        if ($text.Contains($old1)) {
-          $text = $text.Replace($old1, $new1)
-        }
-        elseif ($text.Contains('account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag')) {
-          $text = $text.Replace('string username =`n                            account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag`n                            ?? "Microsoft Account";', $new1)
-        }
-        elseif ($text.Contains('account.Gamertag')) {
-          $text = $text.Replace('account.Gamertag', '"Microsoft Account"')
+        $updated = [regex]::Replace($text, $pattern, $replacement, 1)
+
+        if ($updated -eq $text) {
+          Write-Host 'The invalid XboxTokens username expression was not found.'
+          Write-Host 'Checking for any remaining direct Gamertag/XboxTokens references...'
+          $updated = $text -replace 'account\.Gamertag', '"Microsoft Account"'
+          $updated = $updated -replace 'account\.XboxTokens\?\.XstsToken\?\.XuiClaims\?\.Gamertag', '"Microsoft Account"'
         }
 
-        [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($path, $updated, [System.Text.UTF8Encoding]::new($false))
+
+        Write-Host 'Relevant Microsoft account code after patch:'
+        Select-String -Path $path -Pattern 'string username|JEGameAccount|XboxTokens|Gamertag' -Context 1,2
 
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add MainWindow.xaml.cs
-        git diff --cached --quiet
-        if ($LASTEXITCODE -ne 0) {
-          git commit -m 'Fix Microsoft account profile username API'
+        if (-not (git diff --cached --quiet)) {
+          git commit -m 'Fix Microsoft account username API in MainWindow'
           git push
         }
 
