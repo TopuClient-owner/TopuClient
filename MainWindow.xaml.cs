@@ -20,6 +20,7 @@ using CmlLib.Core.Auth.Microsoft;
 using CmlLib.Core.Installers;
 using CmlLib.Core.ModLoaders.FabricMC;
 using CmlLib.Core.ProcessBuilder;
+using XboxAuthNet.Game;
 
 namespace TopuLauncher
 {
@@ -176,12 +177,6 @@ private static readonly HttpClient Http = CreateHttpClient();
         // INITIAL UI
         // ========================================================
 
-        if (ProfileNameInput != null)
-        {
-            ProfileNameInput.Text =
-                rememberedProfile;
-        }
-
         LoadProfilesIntoSelector();
         LoadProfileSettings(_gamePath);
 
@@ -297,9 +292,6 @@ private static readonly HttpClient Http = CreateHttpClient();
         _gamePath =
             newGamePath;
 
-        ProfileNameInput.Text =
-            GetDisplayProfileName(normalized);
-
         SaveRememberedProfile(
             GetDisplayProfileName(normalized));
 
@@ -317,16 +309,16 @@ private static readonly HttpClient Http = CreateHttpClient();
 
     private string GetActiveProfileName()
     {
-        if (ProfileNameInput == null)
-            return DefaultProfileName;
+        if (ProfileSelector?.SelectedItem != null)
+        {
+            string selected = ProfileSelector.SelectedItem.ToString() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(selected))
+                return selected.Trim();
+        }
 
-        string profile =
-            ProfileNameInput.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(profile))
-            profile = DefaultProfileName;
-
-        return profile;
+        string remembered = LoadRememberedProfile();
+        string display = GetDisplayProfileName(Path.GetFileName(remembered));
+        return string.IsNullOrWhiteSpace(display) ? DefaultProfileName : display;
     }
 
     // ============================================================
@@ -662,10 +654,6 @@ private static readonly HttpClient Http = CreateHttpClient();
                 RamLabel.Text =
                     $"{ram}GB";
             }
-
-            ProfileNameInput.Text =
-                GetDisplayProfileName(
-                    Path.GetFileName(gamePath));
 
             UpdateProfileCard();
         }
@@ -1421,7 +1409,7 @@ private static readonly HttpClient Http = CreateHttpClient();
                 if (account != null)
                 {
                     await _loginHandler.Signout(
-                        account);
+                        account.Value);
                 }
             }
 
@@ -1581,7 +1569,7 @@ private static readonly HttpClient Http = CreateHttpClient();
 
         MSession session =
             await _loginHandler.Authenticate(
-                account);
+                account.Value);
 
         SaveRememberedAccount(
             new LauncherAccountState
@@ -1869,19 +1857,8 @@ private static readonly HttpClient Http = CreateHttpClient();
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (StatusText == null)
-            return;
-
-        if (AuthTypeBox.SelectedIndex == 0)
-        {
-            StatusText.Text =
-                "Offline account mode.";
-        }
-        else
-        {
-            StatusText.Text =
-                "Microsoft account mode.";
-        }
+        if (StatusText != null)
+            StatusText.Text = "Use the Accounts tab to select your account.";
     }
 
     // ============================================================
