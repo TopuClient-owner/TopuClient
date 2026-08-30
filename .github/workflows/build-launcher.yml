@@ -1,4 +1,4 @@
-name: Build Topu Launcher EXE + MSI
+name: Build Topu Client MSI
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-msi:
     runs-on: windows-latest
 
     steps:
@@ -41,30 +41,15 @@ jobs:
           [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
         }
 
-        git config user.name 'github-actions[bot]'
-        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        git add MainWindow.xaml.cs
-        git diff --cached --quiet
-        if ($LASTEXITCODE -ne 0) {
-          git commit -m 'Fix Microsoft account gamertag API usage'
-          git push
-        }
-
-    - name: Publish Standalone Single-File EXE
+    - name: Publish Launcher for MSI
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
-    - name: Upload Launcher Executable
-      uses: actions/upload-artifact@v4
-      with:
-        name: TopuLauncher-Win64
-        path: ./publish/TopuLauncher.exe
-
-    - name: Install WiX Toolset
+    - name: Install WiX Toolset 6.0.2
       shell: pwsh
       run: |
-        dotnet tool install --global wix --version 6.*
-        wix extension add WixToolset.UI.wixext --global
+        dotnet tool install --global wix --version 6.0.2
+        wix extension add -g WixToolset.UI.wixext/6.0.2
 
     - name: Create MSI Installer Definition
       shell: pwsh
@@ -80,7 +65,6 @@ jobs:
             Scope="perMachine">
 
             <MajorUpgrade DowngradeErrorMessage="A newer version of Topu Client is already installed." />
-
             <MediaTemplate EmbedCab="yes" />
 
             <StandardDirectory Id="ProgramFiles64Folder">
@@ -115,7 +99,6 @@ jobs:
             </Feature>
 
             <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-            <WixVariable Id="WixUILicenseRtf" Value="" />
           </Package>
         </Wix>
         '@ | Set-Content -Path TopuClient.wxs -Encoding UTF8
@@ -123,20 +106,18 @@ jobs:
     - name: Build MSI Installer
       shell: pwsh
       run: |
-        wix build TopuClient.wxs -o ./publish/TopuClient-Setup.msi -ext WixToolset.UI.wixext
+        wix build TopuClient.wxs -arch x64 -o ./TopuClient-Setup.msi -ext WixToolset.UI.wixext
 
-    - name: Upload MSI Installer
+    - name: Upload MSI Artifact
       uses: actions/upload-artifact@v4
       with:
         name: TopuClient-MSI
-        path: ./publish/TopuClient-Setup.msi
+        path: ./TopuClient-Setup.msi
 
-    - name: Create Release and Attach EXE + MSI
+    - name: Create Release and Attach MSI
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          ./publish/TopuLauncher.exe
-          ./publish/TopuClient-Setup.msi
+        files: ./TopuClient-Setup.msi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
