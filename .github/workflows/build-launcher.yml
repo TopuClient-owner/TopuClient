@@ -29,21 +29,53 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    - name: Publish Launcher for MSI
+    # Do NOT make this a single-file publish.
+    # WiX must package the complete self-contained output because the
+    # launcher depends on the generated .NET/WPF runtime files.
+    - name: Publish Complete Self-Contained Launcher
+      shell: pwsh
       run: |
-        dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+        if (Test-Path './publish') {
+          Remove-Item './publish' -Recurse -Force
+        }
+
+        dotnet publish TopuLauncher.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:PublishSingleFile=false `
+          -p:IncludeNativeLibrariesForSelfExtract=false `
+          -p:DebugType=None `
+          -p:DebugSymbols=false `
+          -o ./publish
 
     - name: Verify Published Launcher
       shell: pwsh
       run: |
         $exe = Join-Path $PWD 'publish\TopuLauncher.exe'
+
         if (-not (Test-Path $exe)) {
           Write-Error "TopuLauncher.exe was not produced: $exe"
           exit 1
         }
+
+        $files = @(Get-ChildItem './publish' -File -Recurse)
+        Write-Host "Published files: $($files.Count)"
+
+        if ($files.Count -lt 5) {
+          Write-Error "Publish output looks incomplete. Only $($files.Count) files were produced."
+          exit 1
+        }
+
         $item = Get-Item $exe
-        Write-Host "Published launcher: $($item.FullName)"
-        Write-Host "Size: $($item.Length) bytes"
+        Write-Host "Launcher: $($item.FullName)"
+        Write-Host "Launcher size: $($item.Length) bytes"
+
+        $dll = Join-Path $PWD 'publish\TopuLauncher.dll'
+        if (-not (Test-Path $dll)) {
+          Write-Error 'TopuLauncher.dll is missing from the self-contained publish output.'
+          exit 1
+        }
 
     - name: Install WiX Toolset 6.0.2
       shell: pwsh
@@ -54,70 +86,105 @@ jobs:
     - name: Create MSI Installer Definition
       shell: pwsh
       run: |
-        @'
-        <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-             xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+        $publishFiles = @(Get-ChildItem './publish' -File -Recurse)
+
+        $components = New-Object System.Text.StringBuilder
+        $refs = New-Object System.Text.StringBuilder
+        $index = 0
+
+        foreach ($file in $publishFiles) {
+          $relative = $file.FullName.Substring((Resolve-Path './publish').Path.Length).TrimStart('\','/')
+          $source = 'publish\' + $relative
+
+          # The current publish is expected to be flat for win-x64 self-contained
+          # output. Keep a safe generated WiX identifier for every file.
+          if ($relative.Contains('\') -or $relative.Contains('/')) {
+            continue
+          }
+
+          $index++
+          $componentId = "PublishFileComponent$index"
+          $fileId = "PublishFile$index"
+
+          $escapedSource = $source.Replace('&', '&amp;').Replace('"', '&quot;')
+          $escapedName = $file.Name.Replace('&', '&amp;').Replace('"', '&quot;')
+
+          [void]$components.AppendLine("                <Component Id=\"$componentId\" Guid=\"*\">")
+          [void]$components.AppendLine("                  <File Id=\"$fileId\" Source=\"$escapedSource\" KeyPath=\"yes\" />")
+          [void]$components.AppendLine("                </Component>")
+          [void]$refs.AppendLine("              <ComponentRef Id=\"$componentId\" />")
+        }
+
+        if ($index -eq 0) {
+          throw 'No publish files were found to package.'
+        }
+
+        $wxs = @"
+        <Wix xmlns=\"http://wixtoolset.org/schemas/v4/wxs\"
+             xmlns:ui=\"http://wixtoolset.org/schemas/v4/wxs/ui\">
           <Package
-            Name="Topu Client"
-            Manufacturer="BetterToppi"
-            Version="1.0.0.0"
-            UpgradeCode="8D2B2C7B-9B8D-4F5C-A4F1-4F1F4B7D8C31"
-            Scope="perMachine">
+            Name=\"Topu Client\"
+            Manufacturer=\"BetterToppi\"
+            Version=\"1.0.0.0\"
+            UpgradeCode=\"8D2B2C7B-9B8D-4F5C-A4F1-4F1F4B7D8C31\"
+            Scope=\"perMachine\">
 
-            <MajorUpgrade DowngradeErrorMessage="A newer version of Topu Client is already installed." />
-            <MediaTemplate EmbedCab="yes" />
+            <MajorUpgrade DowngradeErrorMessage=\"A newer version of Topu Client is already installed.\" />
+            <MediaTemplate EmbedCab=\"yes\" />
 
-            <StandardDirectory Id="ProgramFiles64Folder">
-              <Directory Id="INSTALLFOLDER" Name="Topu Client">
-                <Component Id="TopuClientComponent" Guid="*">
-                  <File Id="TopuLauncherExe" Source="publish\TopuLauncher.exe" KeyPath="yes" />
+            <StandardDirectory Id=\"ProgramFiles64Folder\">
+              <Directory Id=\"INSTALLFOLDER\" Name=\"Topu Client\">
+$($components.ToString())
+              </Directory>
+            </StandardDirectory>
+
+            <StandardDirectory Id=\"ProgramMenuFolder\">
+              <Directory Id=\"TopuStartMenuFolder\" Name=\"Topu Client\">
+                <Component Id=\"StartMenuComponent\" Guid=\"*\">
+                  <Shortcut Id=\"TopuStartMenuShortcut\"
+                            Name=\"Topu Client\"
+                            Target=\"[INSTALLFOLDER]TopuLauncher.exe\"
+                            WorkingDirectory=\"INSTALLFOLDER\" />
+                  <RemoveFolder Id=\"RemoveTopuStartMenuFolder\" On=\"uninstall\" />
+                  <RegistryValue Root=\"HKCU\"
+                                 Key=\"Software\BetterToppi\TopuClient\"
+                                 Name=\"Installed\"
+                                 Type=\"integer\"
+                                 Value=\"1\"
+                                 KeyPath=\"yes\" />
                 </Component>
               </Directory>
             </StandardDirectory>
 
-            <StandardDirectory Id="ProgramMenuFolder">
-              <Directory Id="TopuStartMenuFolder" Name="Topu Client">
-                <Component Id="StartMenuComponent" Guid="*">
-                  <Shortcut Id="TopuStartMenuShortcut"
-                            Name="Topu Client"
-                            Target="[INSTALLFOLDER]TopuLauncher.exe"
-                            WorkingDirectory="INSTALLFOLDER" />
-                  <RemoveFolder Id="RemoveTopuStartMenuFolder" On="uninstall" />
-                  <RegistryValue Root="HKCU"
-                                 Key="Software\BetterToppi\TopuClient"
-                                 Name="Installed"
-                                 Type="integer"
-                                 Value="1"
-                                 KeyPath="yes" />
-                </Component>
-              </Directory>
-            </StandardDirectory>
-
-            <StandardDirectory Id="DesktopFolder">
-              <Component Id="DesktopComponent" Guid="*">
-                <Shortcut Id="TopuDesktopShortcut"
-                          Name="Topu Client"
-                          Target="[INSTALLFOLDER]TopuLauncher.exe"
-                          WorkingDirectory="INSTALLFOLDER" />
-                <RegistryValue Root="HKCU"
-                               Key="Software\BetterToppi\TopuClient"
-                               Name="DesktopShortcut"
-                               Type="integer"
-                               Value="1"
-                               KeyPath="yes" />
+            <StandardDirectory Id=\"DesktopFolder\">
+              <Component Id=\"DesktopComponent\" Guid=\"*\">
+                <Shortcut Id=\"TopuDesktopShortcut\"
+                          Name=\"Topu Client\"
+                          Target=\"[INSTALLFOLDER]TopuLauncher.exe\"
+                          WorkingDirectory=\"INSTALLFOLDER\" />
+                <RegistryValue Root=\"HKCU\"
+                               Key=\"Software\BetterToppi\TopuClient\"
+                               Name=\"DesktopShortcut\"
+                               Type=\"integer\"
+                               Value=\"1\"
+                               KeyPath=\"yes\" />
               </Component>
             </StandardDirectory>
 
-            <Feature Id="MainFeature" Title="Topu Client" Level="1">
-              <ComponentRef Id="TopuClientComponent" />
-              <ComponentRef Id="StartMenuComponent" />
-              <ComponentRef Id="DesktopComponent" />
+            <Feature Id=\"MainFeature\" Title=\"Topu Client\" Level=\"1\">
+$($refs.ToString())
+              <ComponentRef Id=\"StartMenuComponent\" />
+              <ComponentRef Id=\"DesktopComponent\" />
             </Feature>
 
-            <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+            <ui:WixUI Id=\"WixUI_InstallDir\" InstallDirectory=\"INSTALLFOLDER\" />
           </Package>
         </Wix>
-        '@ | Set-Content -Path TopuClient.wxs -Encoding UTF8
+        "@
+
+        $wxs | Set-Content -Path TopuClient.wxs -Encoding UTF8
+
+        Write-Host "WiX will package $index publish files."
 
     - name: Build MSI Installer
       shell: pwsh
@@ -131,7 +198,15 @@ jobs:
           Write-Error 'TopuClient-Setup.msi was not produced.'
           exit 1
         }
-        Get-Item './TopuClient-Setup.msi' | Format-List FullName,Length
+
+        $msi = Get-Item './TopuClient-Setup.msi'
+        Write-Host "MSI: $($msi.FullName)"
+        Write-Host "MSI size: $($msi.Length) bytes"
+
+        if ($msi.Length -lt 1000000) {
+          Write-Error 'MSI is suspiciously small; the launcher payload may not have been packaged.'
+          exit 1
+        }
 
     - name: Upload MSI Artifact
       uses: actions/upload-artifact@v4
