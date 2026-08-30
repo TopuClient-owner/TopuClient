@@ -14,6 +14,8 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
 
+    <!-- The launcher itself is deliberately a normal multi-file application.
+         The separate TopuClient-Setup.exe is the installer. -->
     <PublishSingleFile>false</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
