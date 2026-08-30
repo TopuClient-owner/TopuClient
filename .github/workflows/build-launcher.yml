@@ -29,18 +29,6 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    - name: Fix Microsoft Account Gamertag API
-      shell: pwsh
-      run: |
-        $path = 'MainWindow.xaml.cs'
-        $text = [System.IO.File]::ReadAllText($path)
-        $old = 'account.Gamertag'
-        $new = 'account.XboxTokens?.XstsToken?.XuiClaims?.Gamertag'
-        if ($text.Contains($old)) {
-          $text = $text.Replace($old, $new)
-          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
-        }
-
     - name: Publish Launcher for MSI
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
@@ -75,7 +63,7 @@ jobs:
               </Directory>
             </StandardDirectory>
 
-            <StandardDirectory Id="CommonStartMenuFolder">
+            <StandardDirectory Id="ProgramMenuFolder">
               <Directory Id="TopuStartMenuFolder" Name="Topu Client">
                 <Component Id="StartMenuComponent" Guid="*">
                   <Shortcut Id="TopuStartMenuShortcut"
