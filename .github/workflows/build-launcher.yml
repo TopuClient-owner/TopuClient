@@ -1,12 +1,11 @@
-name: Build Topu Launcher EXE
+name: Build Topu Launcher EXE + MSI
 
 on:
   push:
     branches:
       - main
-      
     tags:
-      - 'v*' # Builds and publishes a GitHub Release when you push tags like v1.0.0
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -19,21 +18,17 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    # Step 1: Checkout repository code
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Step 2: Set up .NET 8 SDK
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 
-    # Step 3: Restore NuGet dependencies
     - name: Restore NuGet Packages
       run: dotnet restore TopuLauncher.csproj
 
-    # Step 4: Fix the CmlLib 3.3.1 account API before compiling
     - name: Fix Microsoft Account Gamertag API
       shell: pwsh
       run: |
@@ -55,23 +50,93 @@ jobs:
           git push
         }
 
-    # Step 5: Build and Publish single-file EXE
     - name: Publish Standalone Single-File EXE
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
-    # Step 6: Upload build artifact so you can download the EXE directly from GitHub Actions
     - name: Upload Launcher Executable
       uses: actions/upload-artifact@v4
       with:
         name: TopuLauncher-Win64
         path: ./publish/TopuLauncher.exe
 
-    # Step 7: Create GitHub Release if a tag is pushed (e.g., git tag v1.0.0 && git push origin v1.0.0)
-    - name: Create Release and Attach EXE
+    - name: Install WiX Toolset
+      shell: pwsh
+      run: |
+        dotnet tool install --global wix --version 6.*
+        wix extension add WixToolset.UI.wixext --global
+
+    - name: Create MSI Installer Definition
+      shell: pwsh
+      run: |
+        @'
+        <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+             xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+          <Package
+            Name="Topu Client"
+            Manufacturer="BetterToppi"
+            Version="1.0.0.0"
+            UpgradeCode="8D2B2C7B-9B8D-4F5C-A4F1-4F1F4B7D8C31"
+            Scope="perMachine">
+
+            <MajorUpgrade DowngradeErrorMessage="A newer version of Topu Client is already installed." />
+
+            <MediaTemplate EmbedCab="yes" />
+
+            <StandardDirectory Id="ProgramFiles64Folder">
+              <Directory Id="INSTALLFOLDER" Name="Topu Client">
+                <Component Id="TopuClientComponent" Guid="*">
+                  <File Id="TopuLauncherExe" Source="publish\TopuLauncher.exe" KeyPath="yes" />
+                </Component>
+              </Directory>
+            </StandardDirectory>
+
+            <StandardDirectory Id="CommonStartMenuFolder">
+              <Directory Id="TopuStartMenuFolder" Name="Topu Client">
+                <Component Id="StartMenuComponent" Guid="*">
+                  <Shortcut Id="TopuStartMenuShortcut"
+                            Name="Topu Client"
+                            Target="[INSTALLFOLDER]TopuLauncher.exe"
+                            WorkingDirectory="INSTALLFOLDER" />
+                  <RemoveFolder Id="RemoveTopuStartMenuFolder" On="uninstall" />
+                  <RegistryValue Root="HKCU"
+                                 Key="Software\BetterToppi\TopuClient"
+                                 Name="Installed"
+                                 Type="integer"
+                                 Value="1"
+                                 KeyPath="yes" />
+                </Component>
+              </Directory>
+            </StandardDirectory>
+
+            <Feature Id="MainFeature" Title="Topu Client" Level="1">
+              <ComponentRef Id="TopuClientComponent" />
+              <ComponentRef Id="StartMenuComponent" />
+            </Feature>
+
+            <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+            <WixVariable Id="WixUILicenseRtf" Value="" />
+          </Package>
+        </Wix>
+        '@ | Set-Content -Path TopuClient.wxs -Encoding UTF8
+
+    - name: Build MSI Installer
+      shell: pwsh
+      run: |
+        wix build TopuClient.wxs -o ./publish/TopuClient-Setup.msi -ext WixToolset.UI.wixext
+
+    - name: Upload MSI Installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: TopuClient-MSI
+        path: ./publish/TopuClient-Setup.msi
+
+    - name: Create Release and Attach EXE + MSI
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: ./publish/TopuLauncher.exe
+        files: |
+          ./publish/TopuLauncher.exe
+          ./publish/TopuClient-Setup.msi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
