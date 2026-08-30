@@ -1,6 +1,5 @@
 using System;
-using System.Diagnostics;
-using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -9,8 +8,12 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using CmlLib.Core;
+using CmlLib.Core.Auth;
+using CmlLib.Core.Installers;
 using CmlLib.Core.Installer.Forge;
+using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
@@ -25,9 +28,19 @@ namespace TopuLauncher
             ("entityculling", "Entity Culling")
         };
 
+        private static readonly string[] ForgeMinecraftVersions =
+        {
+            "1.20.1",
+            "1.8.9"
+        };
+
         private bool _forgeHooksReady;
         private bool _forgeLaunching;
         private bool _loadingLoaderState;
+
+        private ComboBox? LoaderSelector;
+        private TextBlock? LoaderStatusLabel;
+        private Button? SaveProfileButton;
 
         protected override void OnContentRendered(EventArgs e)
         {
@@ -38,33 +51,142 @@ namespace TopuLauncher
 
             _forgeHooksReady = true;
 
-            LoaderSelector.SelectionChanged += LoaderSelector_Changed;
+            EnsureLoaderUi();
+
+            if (LoaderSelector != null)
+                LoaderSelector.SelectionChanged += LoaderSelector_Changed;
+
             VersionBox.SelectionChanged += VersionBox_Changed;
             ProfileSelector.SelectionChanged += ProfileSelector_Changed;
-            SaveProfileButton.Click += SaveProfileButton_Changed;
+
+            if (SaveProfileButton != null)
+                SaveProfileButton.Click += SaveProfileButton_Changed;
+
             LaunchBtn.PreviewMouseLeftButtonDown += LaunchBtn_ForgeMouseDown;
             LaunchBtn.PreviewKeyDown += LaunchBtn_ForgeKeyDown;
 
             LoadLoaderStateForProfile();
         }
 
+        private void EnsureLoaderUi()
+        {
+            try
+            {
+                if (LoaderSelector != null)
+                    return;
+
+                LoaderSelector = new ComboBox
+                {
+                    Height = 36,
+                    Style = (Style)FindResource("ModernComboBox"),
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+
+                LoaderSelector.Items.Add(new ComboBoxItem { Content = "Fabric" });
+                LoaderSelector.Items.Add(new ComboBoxItem { Content = "Forge" });
+                LoaderSelector.SelectedIndex = 0;
+
+                LoaderStatusLabel = new TextBlock
+                {
+                    Foreground = new SolidColorBrush(Color.FromRgb(119, 125, 136)),
+                    FontSize = 10,
+                    Margin = new Thickness(0, 8, 0, 0),
+                    TextWrapping = TextWrapping.Wrap
+                };
+
+                StackPanel profileStack = TabProfiles;
+
+                Border loaderCard = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(25, 27, 32)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(41, 44, 51)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(12),
+                    Padding = new Thickness(16),
+                    Margin = new Thickness(0, 0, 0, 14)
+                };
+
+                StackPanel cardContent = new StackPanel();
+
+                cardContent.Children.Add(new TextBlock
+                {
+                    Text = "MOD LOADER",
+                    Foreground = new SolidColorBrush(Color.FromRgb(102, 108, 118)),
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(0, 0, 0, 8)
+                });
+
+                Grid row = new Grid();
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                TextBlock label = new TextBlock
+                {
+                    Text = "Loader",
+                    Foreground = new SolidColorBrush(Color.FromRgb(200, 205, 213)),
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                Grid.SetColumn(label, 0);
+                row.Children.Add(label);
+
+                Grid.SetColumn(LoaderSelector, 1);
+                row.Children.Add(LoaderSelector);
+
+                cardContent.Children.Add(row);
+                cardContent.Children.Add(LoaderStatusLabel);
+                loaderCard.Child = cardContent;
+
+                int insertIndex = Math.Min(1, profileStack.Children.Count);
+                profileStack.Children.Insert(insertIndex, loaderCard);
+
+                SaveProfileButton = FindButtonByContent(profileStack, "Save Profile Settings");
+            }
+            catch (Exception ex)
+            {
+                WriteException("LOADER UI INITIALIZATION ERROR", ex);
+            }
+        }
+
+        private static Button? FindButtonByContent(DependencyObject root, string content)
+        {
+            if (root is Button button &&
+                string.Equals(button.Content?.ToString(), content, StringComparison.OrdinalIgnoreCase))
+            {
+                return button;
+            }
+
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                Button? found = FindButtonByContent(child, content);
+                if (found != null)
+                    return found;
+            }
+
+            return null;
+        }
+
         private string GetSelectedLoaderName()
         {
-            return (LoaderSelector.SelectedItem as ComboBoxItem)?.Content?.ToString()?.Trim()
+            return (LoaderSelector?.SelectedItem as ComboBoxItem)?.Content?.ToString()?.Trim()
                    ?? "Fabric";
         }
 
         private string GetLoaderStatePath()
         {
-            return Path.Combine(_gamePath, "topu-loader.txt");
+            return System.IO.Path.Combine(_gamePath, "topu-loader.txt");
         }
 
         private void SaveLoaderState()
         {
             try
             {
-                Directory.CreateDirectory(_gamePath);
-                File.WriteAllText(GetLoaderStatePath(), GetSelectedLoaderName());
+                System.IO.Directory.CreateDirectory(_gamePath);
+                System.IO.File.WriteAllText(GetLoaderStatePath(), GetSelectedLoaderName());
             }
             catch (Exception ex)
             {
@@ -76,17 +198,19 @@ namespace TopuLauncher
         {
             try
             {
-                string path = Path.Combine(_gamePath, "topu-profile.json");
-                if (!File.Exists(path))
+                string path = System.IO.Path.Combine(_gamePath, "topu-profile.json");
+                if (!System.IO.File.Exists(path))
                     return;
 
-                using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+                using JsonDocument doc = JsonDocument.Parse(System.IO.File.ReadAllText(path));
                 if (!doc.RootElement.TryGetProperty("Version", out JsonElement versionElement))
                     return;
 
                 string? savedVersion = versionElement.GetString();
                 if (string.IsNullOrWhiteSpace(savedVersion))
                     return;
+
+                EnsureVersionItem(savedVersion, GetSelectedLoaderName());
 
                 foreach (ComboBoxItem item in VersionBox.Items.OfType<ComboBoxItem>())
                 {
@@ -103,6 +227,20 @@ namespace TopuLauncher
             }
         }
 
+        private void EnsureVersionItem(string version, string loader)
+        {
+            if (VersionBox.Items.OfType<ComboBoxItem>().Any(i =>
+                    string.Equals(i.Content?.ToString(), version, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            if (!loader.Equals("Forge", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            VersionBox.Items.Add(new ComboBoxItem { Content = version });
+        }
+
         private void LoadLoaderStateForProfile()
         {
             try
@@ -111,12 +249,15 @@ namespace TopuLauncher
 
                 string loader = "Fabric";
                 string path = GetLoaderStatePath();
-                if (File.Exists(path))
-                    loader = File.ReadAllText(path).Trim();
+                if (System.IO.File.Exists(path))
+                    loader = System.IO.File.ReadAllText(path).Trim();
 
-                LoaderSelector.SelectedIndex =
-                    loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                if (!loader.Equals("Forge", StringComparison.OrdinalIgnoreCase))
+                    loader = "Fabric";
 
+                LoaderSelector!.SelectedIndex = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+                UpdateVersionListForLoader(loader);
                 RestoreProfileVersion();
             }
             catch (Exception ex)
@@ -130,14 +271,34 @@ namespace TopuLauncher
             }
         }
 
+        private void UpdateVersionListForLoader(string loader)
+        {
+            if (loader.Equals("Forge", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string version in ForgeMinecraftVersions)
+                    EnsureVersionItem(version, "Forge");
+            }
+        }
+
         private void LoaderSelector_Changed(object? sender, SelectionChangedEventArgs e)
         {
-            if (_loadingLoaderState)
+            if (_loadingLoaderState || LoaderSelector == null)
                 return;
 
+            string loader = GetSelectedLoaderName();
+            UpdateVersionListForLoader(loader);
             SaveLoaderState();
             UpdateLoaderUi();
-            ValidateForgeVersion();
+
+            if (loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) &&
+                !ForgeMinecraftVersions.Contains(GetSelectedVersion(), StringComparer.OrdinalIgnoreCase))
+            {
+                ComboBoxItem? target = VersionBox.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(i => string.Equals(i.Content?.ToString(), "1.20.1", StringComparison.OrdinalIgnoreCase));
+
+                if (target != null)
+                    VersionBox.SelectedItem = target;
+            }
         }
 
         private void VersionBox_Changed(object? sender, SelectionChangedEventArgs e)
@@ -146,7 +307,12 @@ namespace TopuLauncher
                 return;
 
             UpdateLoaderUi();
-            ValidateForgeVersion();
+
+            if (GetSelectedLoaderName().Equals("Forge", StringComparison.OrdinalIgnoreCase) &&
+                !ForgeMinecraftVersions.Contains(GetSelectedVersion(), StringComparer.OrdinalIgnoreCase))
+            {
+                StatusText.Text = "Forge profiles support Minecraft 1.20.1 and 1.8.9.";
+            }
         }
 
         private void ProfileSelector_Changed(object? sender, SelectionChangedEventArgs e)
@@ -171,38 +337,40 @@ namespace TopuLauncher
                 string version = GetSelectedVersion();
                 int ram = (int)RamSlider.Value;
 
-                LaunchLoaderLabel.Text = loader;
-                LaunchVersionLabel.Text = version;
-                LaunchRamLabel.Text = $"{ram}GB RAM";
-                LaunchProfileLabel.Text = GetActiveProfileName();
+                if (LaunchProfileLabel != null)
+                    LaunchProfileLabel.Text = GetActiveProfileName();
+
+                if (LaunchVersionLabel != null)
+                    LaunchVersionLabel.Text = version;
+
+                if (LaunchRamLabel != null)
+                    LaunchRamLabel.Text = $"{ram}GB RAM";
+
                 LaunchBtn.Content = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase)
                     ? "⚡   LAUNCH FORGE"
                     : "⚡   LAUNCH FABRIC";
 
-                SelectedProfileLabel.Text =
-                    $"● {GetActiveProfileName()}   •   {loader} {version}   •   {ram}GB RAM";
+                if (SelectedProfileLabel != null)
+                    SelectedProfileLabel.Text =
+                        $"● {GetActiveProfileName()}   •   {loader} {version}   •   {ram}GB RAM";
 
-                LoaderStatusLabel.Text = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase)
-                    ? "Forge optimization stack • 1.20.1 / 1.8.9"
-                    : "Fabric optimization stack";
+                if (LoaderStatusLabel != null)
+                {
+                    LoaderStatusLabel.Text = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase)
+                        ? "Forge optimization stack • Minecraft 1.20.1 / 1.8.9"
+                        : "Fabric optimization stack";
+                }
 
-                ModSearchStatus.Text = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase)
-                    ? "Forge optimization stack installs automatically on launch for supported versions."
-                    : "Fabric optimization stack installs automatically.";
+                if (ModSearchStatus != null)
+                {
+                    ModSearchStatus.Text = loader.Equals("Forge", StringComparison.OrdinalIgnoreCase)
+                        ? "Forge optimization stack installs automatically on launch."
+                        : "Fabric optimization stack installs automatically.";
+                }
             }
             catch
             {
             }
-        }
-
-        private void ValidateForgeVersion()
-        {
-            if (!GetSelectedLoaderName().Equals("Forge", StringComparison.OrdinalIgnoreCase))
-                return;
-
-            string version = GetSelectedVersion();
-            if (version != "1.20.1" && version != "1.8.9")
-                StatusText.Text = "Forge profiles currently support Minecraft 1.20.1 and 1.8.9.";
         }
 
         private void LaunchBtn_ForgeMouseDown(object? sender, MouseButtonEventArgs e)
@@ -241,13 +409,15 @@ namespace TopuLauncher
                         return;
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 _minecraftProcess = null;
             }
 
             string minecraftVersion = GetSelectedVersion();
-            if (minecraftVersion != "1.20.1" && minecraftVersion != "1.8.9")
+            if (!ForgeMinecraftVersions.Contains(minecraftVersion, StringComparer.OrdinalIgnoreCase))
             {
                 MessageBox.Show(
                     "Forge support currently targets Minecraft 1.20.1 and 1.8.9.\n\nSelect one of those versions for this profile.",
@@ -277,7 +447,7 @@ namespace TopuLauncher
 
                 _session = session;
 
-                int javaMajor = minecraftVersion == "1.8.9" ? 8 : 17;
+                int javaMajor = minecraftVersion.Equals("1.8.9", StringComparison.OrdinalIgnoreCase) ? 8 : 17;
                 string javaPath = await EnsureJavaAsync(javaMajor);
                 WriteLog($"Java: {javaPath}");
 
@@ -291,7 +461,9 @@ namespace TopuLauncher
                         {
                             StatusText.Text = $"Downloading {args.Name} ({args.ProgressedTasks}/{args.TotalTasks})";
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     });
 
                 Progress<ByteProgress> byteProgress =
@@ -305,20 +477,24 @@ namespace TopuLauncher
                                 StatusText.Text = $"Downloading: {percent:0}%";
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     });
 
+                using HttpClient forgeHttp = new HttpClient();
+                ForgeInstaller forgeInstaller = new ForgeInstaller(launcher, forgeHttp);
                 StatusText.Text = $"Finding latest Forge for Minecraft {minecraftVersion}...";
 
-                ForgeInstaller forgeInstaller = new ForgeInstaller(launcher, Http);
-                var forgeVersions = await forgeInstaller.GetForgeVersions(minecraftVersion);
-                var latest = forgeVersions.FirstOrDefault(v => v.IsLatestVersion)
-                             ?? forgeVersions.FirstOrDefault();
+                IEnumerable<ForgeVersion> forgeVersions = await forgeInstaller.GetForgeVersions(minecraftVersion);
+                ForgeVersion? latest = forgeVersions.FirstOrDefault(v => v.IsLatestVersion)
+                                  ?? forgeVersions.FirstOrDefault(v => v.IsRecommendedVersion)
+                                  ?? forgeVersions.FirstOrDefault();
 
                 if (latest == null)
                     throw new InvalidOperationException($"No Forge version was found for Minecraft {minecraftVersion}.");
 
-                WriteLog($"Latest Forge: {latest.ForgeVersionName}");
+                WriteLog($"Selected Forge: {latest.ForgeVersionName}");
 
                 ForgeInstallOptions forgeOptions = new ForgeInstallOptions
                 {
@@ -332,9 +508,9 @@ namespace TopuLauncher
 
                 StatusText.Text = $"Installing Forge {latest.ForgeVersionName}...";
                 string forgeVersionName = await forgeInstaller.Install(latest, forgeOptions);
-                WriteLog($"Forge version profile: {forgeVersionName}");
+                WriteLog($"Forge profile: {forgeVersionName}");
 
-                StatusText.Text = "Installing Minecraft dependencies...";
+                StatusText.Text = "Installing Forge dependencies...";
                 await launcher.InstallAsync(forgeVersionName, fileProgress, byteProgress, CancellationToken.None);
 
                 await InstallForgePerformanceModsAsync(minecraftVersion);
@@ -366,6 +542,8 @@ namespace TopuLauncher
                 WriteLog($"Forge executable: {process.StartInfo.FileName}");
                 WriteLog($"Forge arguments: {process.StartInfo.Arguments}");
                 WriteLog($"Forge working directory: {process.StartInfo.WorkingDirectory}");
+
+                WriteDebugFile(process, javaPath, minecraftVersion, forgeVersionName, ram);
 
                 StatusText.Text = $"Starting Forge {minecraftVersion}...";
 
@@ -399,10 +577,12 @@ namespace TopuLauncher
 
         private async Task InstallForgePerformanceModsAsync(string minecraftVersion)
         {
-            string modsFolder = Path.Combine(_gamePath, "mods");
-            Directory.CreateDirectory(modsFolder);
+            string modsFolder = System.IO.Path.Combine(_gamePath, "mods");
+            System.IO.Directory.CreateDirectory(modsFolder);
 
             WriteLog("===== FORGE PERFORMANCE MOD INSTALL =====");
+
+            using HttpClient http = new HttpClient();
 
             foreach ((string slug, string name) in ForgePerformanceMods)
             {
@@ -417,7 +597,7 @@ namespace TopuLauncher
                         Uri.EscapeDataString(minecraftVersion) +
                         "%22%5D";
 
-                    using HttpResponseMessage response = await Http.GetAsync(url);
+                    using HttpResponseMessage response = await http.GetAsync(url);
                     response.EnsureSuccessStatusCode();
 
                     using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -456,14 +636,22 @@ namespace TopuLauncher
                         continue;
                     }
 
-                    string destination = Path.Combine(modsFolder, SanitizeFileName(filename));
-                    if (File.Exists(destination) && new FileInfo(destination).Length > 0)
+                    string destination = System.IO.Path.Combine(modsFolder, SanitizeFileName(filename));
+                    if (System.IO.File.Exists(destination) && new System.IO.FileInfo(destination).Length > 0)
                     {
                         WriteLog($"Forge optimization already installed: {name}");
                         continue;
                     }
 
-                    await DownloadFileAsync(downloadUrl, destination);
+                    using HttpResponseMessage modResponse = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                    modResponse.EnsureSuccessStatusCode();
+                    await using System.IO.Stream source = await modResponse.Content.ReadAsStreamAsync();
+                    await using System.IO.FileStream destinationStream = System.IO.File.Create(destination);
+                    await source.CopyToAsync(destinationStream, CancellationToken.None);
+
+                    if (!System.IO.File.Exists(destination) || new System.IO.FileInfo(destination).Length <= 0)
+                        throw new InvalidOperationException($"Downloaded Forge optimization is empty: {name}");
+
                     WriteLog($"Installed Forge optimization: {name}");
                 }
                 catch (Exception ex)
