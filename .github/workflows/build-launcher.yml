@@ -29,8 +29,6 @@ jobs:
       - name: Restore NuGet Packages
         run: dotnet restore TopuLauncher.csproj
 
-      # Keep the application as a normal multi-file self-contained app.
-      # The installer is a separate executable.
       - name: Publish Launcher Application
         run: dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
 
@@ -41,8 +39,24 @@ jobs:
           Write-Host 'Published application files:'
           Get-ChildItem './publish' -Recurse | Select-Object FullName, Length
 
-      # GitHub-hosted Windows runners currently provide the newer Inno Setup package.
-      # Use the installed/current version instead of forcing the older 6.7.0 package.
+      # Important: actually start the published launcher before creating the installer.
+      # If MainWindow/App startup crashes, this step fails instead of producing a
+      # professional-looking installer containing a broken launcher.
+      - name: Smoke Test Launcher Startup
+        shell: pwsh
+        run: |
+          $workDir = (Resolve-Path './publish').Path
+          $process = Start-Process -FilePath "$workDir\TopuLauncher.exe" -WorkingDirectory $workDir -PassThru
+          Start-Sleep -Seconds 8
+
+          if ($process.HasExited) {
+            Write-Host "TopuLauncher exited during startup with exit code $($process.ExitCode)."
+            throw 'TopuLauncher.exe started but crashed/exited during the startup test.'
+          }
+
+          Write-Host "TopuLauncher.exe is running successfully (PID $($process.Id))."
+          Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
