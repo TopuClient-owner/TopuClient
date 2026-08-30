@@ -22,7 +22,7 @@ TopuClient is built to strip away bloat and give you a blistering fast, modern l
 
 | Feature | Description |
 | :--- | :--- |
-| 🚀 **Massive FPS Boost** | Bundled with state-of-the-art performance mods (**Sodium, Lithium, FerriteCore, Dynamic FPS**) for up to 2x higher frame rates. |
+| 🚀 **Massive FPS Boost** | Bundled with state-of-the-art performance mods (**Sodium, Lithium, FerriteCore, Dynamic FPS**) for up to 4x higher frame rates. |
 | 🔒 **100% Transparent & Safe** | Fully open source. No malware, no telemetry, no hidden hooks—**don't just trust, verify our source code!** |
 | 👥 **Universal Account Support** | Play freely with full support for both **Offline** profiles and **Microsoft** accounts. |
 | 🛠️ **Built-in Mod Integration** | Search and install mods directly from **Modrinth** inside the client interface with automatic version mapping. |
