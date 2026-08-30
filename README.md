@@ -1,4 +1,4 @@
-     <img width="383" height="372" alt="Screenshot 2026-08-30 011429" src="https://github.com/user-attachments/assets/dc252b69-c18c-4ab5-b4b2-603759bcb06c" />
+ <img width="383" height="372" alt="Screenshot 2026-08-30 011429" src="https://github.com/user-attachments/assets/dc252b69-c18c-4ab5-b4b2-603759bcb06c" />
 
 
 <h1 align="center">TopuClient</h1>
