@@ -1,3 +1,4 @@
+
 <Window x:Class="TopuLauncher.MainWindow"
      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1047,11 +1048,6 @@
                                         Style="{StaticResource ModernButton}"
                                         Click="MsLoginBtn_Click"/>
 
-                              
-                                           Foreground="#555A63"
-                                           FontSize="10"
-                                           Margin="0,9,0,0"/>
-
                             </StackPanel>
 
                         </Border>
@@ -1096,6 +1092,5 @@
     </Grid>
 
 </Border>
-
 
 </Window>
