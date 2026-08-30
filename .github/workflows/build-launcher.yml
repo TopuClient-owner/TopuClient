@@ -29,10 +29,6 @@ jobs:
       - name: Restore NuGet Packages
         run: dotnet restore TopuLauncher.csproj
 
-      # IMPORTANT:
-      # Keep the application as a normal multi-file .NET WPF application.
-      # The MSI is the installer; TopuLauncher.exe is the installed application.
-      # Do NOT publish the application as a single-file EXE.
       - name: Publish Launcher Application
         run: dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
 
@@ -66,11 +62,7 @@ jobs:
               <MediaTemplate EmbedCab="yes" />
 
               <StandardDirectory Id="ProgramFiles64Folder">
-                <Directory Id="INSTALLFOLDER" Name="Topu Client">
-                  <Component Id="ApplicationFiles" Guid="*">
-                    <Files Include="!(bindpath.publish)**" />
-                  </Component>
-                </Directory>
+                <Directory Id="INSTALLFOLDER" Name="Topu Client" />
               </StandardDirectory>
 
               <StandardDirectory Id="ProgramMenuFolder">
@@ -95,7 +87,7 @@ jobs:
               </StandardDirectory>
 
               <Feature Id="MainFeature" Title="Topu Client" Level="1">
-                <ComponentRef Id="ApplicationFiles" />
+                <Files Include="!(bindpath.publish)\**" Directory="INSTALLFOLDER" />
                 <ComponentRef Id="StartMenuComponent" />
               </Feature>
 
