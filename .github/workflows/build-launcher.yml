@@ -33,6 +33,18 @@ jobs:
       run: |
         dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
+    - name: Verify Published Launcher
+      shell: pwsh
+      run: |
+        $exe = Join-Path $PWD 'publish\TopuLauncher.exe'
+        if (-not (Test-Path $exe)) {
+          Write-Error "TopuLauncher.exe was not produced: $exe"
+          exit 1
+        }
+        $item = Get-Item $exe
+        Write-Host "Published launcher: $($item.FullName)"
+        Write-Host "Size: $($item.Length) bytes"
+
     - name: Install WiX Toolset 6.0.2
       shell: pwsh
       run: |
@@ -81,9 +93,25 @@ jobs:
               </Directory>
             </StandardDirectory>
 
+            <StandardDirectory Id="DesktopFolder">
+              <Component Id="DesktopComponent" Guid="*">
+                <Shortcut Id="TopuDesktopShortcut"
+                          Name="Topu Client"
+                          Target="[INSTALLFOLDER]TopuLauncher.exe"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\BetterToppi\TopuClient"
+                               Name="DesktopShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+              </Component>
+            </StandardDirectory>
+
             <Feature Id="MainFeature" Title="Topu Client" Level="1">
               <ComponentRef Id="TopuClientComponent" />
               <ComponentRef Id="StartMenuComponent" />
+              <ComponentRef Id="DesktopComponent" />
             </Feature>
 
             <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
@@ -95,6 +123,15 @@ jobs:
       shell: pwsh
       run: |
         wix build TopuClient.wxs -arch x64 -o ./TopuClient-Setup.msi -ext WixToolset.UI.wixext
+
+    - name: Verify MSI
+      shell: pwsh
+      run: |
+        if (-not (Test-Path './TopuClient-Setup.msi')) {
+          Write-Error 'TopuClient-Setup.msi was not produced.'
+          exit 1
+        }
+        Get-Item './TopuClient-Setup.msi' | Format-List FullName,Length
 
     - name: Upload MSI Artifact
       uses: actions/upload-artifact@v4
