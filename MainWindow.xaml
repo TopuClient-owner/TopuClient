@@ -982,7 +982,7 @@
 
                             <StackPanel>
 
-                                <TextBlock Text="OFFLINE / CRACKED ACCOUNT"
+                                <TextBlock Text="OFFLINE"
                                            Foreground="#666C76"
                                            FontSize="10"
                                            FontWeight="Bold"/>
@@ -1029,7 +1029,7 @@
                                            FontSize="10"
                                            FontWeight="Bold"/>
 
-                                <TextBlock Text="Use official Microsoft OAuth. Your saved Microsoft account can be selected again without logging in every launch."
+                                <TextBlock Text="Use Microsoft account . Your saved Microsoft account can be selected again without logging in every launch."
                                            Foreground="{StaticResource MutedText}"
                                            FontSize="11"
                                            TextWrapping="Wrap"
@@ -1047,7 +1047,7 @@
                                         Style="{StaticResource ModernButton}"
                                         Click="MsLoginBtn_Click"/>
 
-                                <TextBlock Text="Microsoft OAuth uses the CmlLib authentication system."
+                              
                                            Foreground="#555A63"
                                            FontSize="10"
                                            Margin="0,9,0,0"/>
