@@ -1,4 +1,4 @@
-name: Build Topu Client Installer
+name: Build Topu Client
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  build-installer:
+  build-launcher:
     runs-on: windows-latest
 
     steps:
@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore TopuLauncher.csproj
 
       # Keep the application as a normal multi-file self-contained app.
-      # TopuLauncher.exe is the installed application, NOT the installer.
+      # The installer is a separate executable.
       - name: Publish Launcher Application
         run: dotnet publish TopuLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
 
@@ -41,13 +41,14 @@ jobs:
           Write-Host 'Published application files:'
           Get-ChildItem './publish' -Recurse | Select-Object FullName, Length
 
-      # Inno Setup creates a separate Setup.exe which installs the complete
-      # publish folder. The installed application remains multi-file.
+      # GitHub-hosted Windows runners currently provide the newer Inno Setup package.
+      # Use the installed/current version instead of forcing the older 6.7.0 package.
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup --version=6.7.0 --no-progress -y
+        run: |
+          choco install innosetup --version=6.7.1 --no-progress -y
 
-      - name: Create Installer Script
+      - name: Create Inno Setup Installer Definition
         shell: pwsh
         run: |
           @'
@@ -63,48 +64,55 @@ jobs:
           AppPublisher={#MyAppPublisher}
           DefaultDirName={autopf}\Topu Client
           DefaultGroupName=Topu Client
-          OutputDir=installer
+          UninstallDisplayIcon={app}\{#MyAppExeName}
+          OutputDir=.
           OutputBaseFilename=TopuClient-Setup
-          Compression=lzma2/max
-          SolidCompression=yes
           ArchitecturesInstallIn64BitMode=x64
-          ArchitecturesAllowed=x64
-          PrivilegesRequired=admin
-          UninstallDisplayName=Topu Client
-          DisableProgramGroupPage=yes
+          Compression=lzma2
+          SolidCompression=yes
           WizardStyle=modern
+          PrivilegesRequired=admin
+          LicenseFile=LICENSE
+          Uninstallable=yes
 
           [Files]
-          Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+          Source: "publish\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
           [Icons]
-          Name: "{autoprograms}\Topu Client\Topu Client"; Filename: "{app}\{#MyAppExeName}"
+          Name: "{autoprograms}\Topu Client"; Filename: "{app}\{#MyAppExeName}"
           Name: "{autodesktop}\Topu Client"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
           [Tasks]
-          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
           [Run]
           Filename: "{app}\{#MyAppExeName}"; Description: "Launch Topu Client"; Flags: nowait postinstall skipifsilent
           '@ | Set-Content -Path TopuClient.iss -Encoding UTF8
 
-      - name: Build Setup EXE
+      - name: Build Topu Client Installer
         shell: pwsh
         run: |
-          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' TopuClient.iss
-          if (!(Test-Path './installer/TopuClient-Setup.exe')) { throw 'Setup EXE was not produced.' }
-          Write-Host "Setup size: $((Get-Item './installer/TopuClient-Setup.exe').Length) bytes"
+          $iscc = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup compiler (ISCC.exe) was not found.' }
+          & $iscc.FullName 'TopuClient.iss'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload Setup EXE
+      - name: Verify Installer
+        shell: pwsh
+        run: |
+          if (!(Test-Path './TopuClient-Setup.exe')) { throw 'TopuClient-Setup.exe was not produced.' }
+          Write-Host "Installer size: $((Get-Item './TopuClient-Setup.exe').Length) bytes"
+
+      - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
         with:
           name: TopuClient-Setup
-          path: ./installer/TopuClient-Setup.exe
+          path: ./TopuClient-Setup.exe
 
-      - name: Create Release and Attach Setup EXE
+      - name: Create Release and Attach Installer
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: ./installer/TopuClient-Setup.exe
+          files: ./TopuClient-Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
