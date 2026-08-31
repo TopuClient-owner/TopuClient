@@ -1,0 +1,44 @@
+name: Fix profile settings persistence
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-profile-settings.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fix SaveProfile_Click
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('MainWindow.xaml.cs')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''        SetActiveProfile(\n            profileName);\n\n        string version =\n            GetSelectedVersion();'''
+
+          new = '''        // Do NOT call SetActiveProfile() here.\n        // SetActiveProfile() reloads topu-profile.json and would overwrite\n        // the version/RAM values the user just selected in the UI.\n        // _gamePath already points to the active profile directory.\n\n        string version =\n            GetSelectedVersion();'''
+
+          if old not in text:
+              raise SystemExit('Expected SaveProfile_Click block was not found; no changes made.')
+
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8', newline='\n')
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-profile-settings.yml
+          git add MainWindow.xaml.cs .github/workflows/fix-profile-settings.yml
+          git commit -m "Fix profile settings persistence" || exit 0
+          git push
