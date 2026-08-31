@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using CmlLib.Core.Installer.Forge;
@@ -14,11 +14,6 @@ namespace TopuLauncher
         public static async Task<string> Install(this ForgeInstaller installer, ForgeVersion version)
         {
             string installedVersion = await installer.Install(version, new ForgeInstallOptions());
-
-            // Forge 1.20.1's BootstrapLauncher must be supplied through Java's
-            // module path. Some CmlLib/Forge combinations generate the JVM
-            // argument as "-p" (or "-p" after a normal classpath), which can
-            // make BootstrapLauncher unavailable at runtime.
             PatchForgeVersionJson(installedVersion);
             return installedVersion;
         }
@@ -37,10 +32,7 @@ namespace TopuLauncher
                 return;
 
             string fileName = versionName + ".json";
-            string[] matches = Directory.GetFiles(
-                profilesRoot,
-                fileName,
-                SearchOption.AllDirectories);
+            string[] matches = Directory.GetFiles(profilesRoot, fileName, SearchOption.AllDirectories);
 
             foreach (string path in matches)
             {
@@ -52,9 +44,7 @@ namespace TopuLauncher
                     if (!document.RootElement.TryGetProperty("arguments", out JsonElement arguments) ||
                         !arguments.TryGetProperty("jvm", out JsonElement jvm) ||
                         jvm.ValueKind != JsonValueKind.Array)
-                    {
                         continue;
-                    }
 
                     bool changed = false;
                     List<JsonElementValue> values = new List<JsonElementValue>();
@@ -76,7 +66,9 @@ namespace TopuLauncher
                         continue;
 
                     using MemoryStream stream = new MemoryStream();
-                    using (Utf8JsonWriter writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                    using (Utf8JsonWriter writer = new Utf8JsonWriter(
+                        stream,
+                        new JsonWriterOptions { Indented = true }))
                     {
                         writer.WriteStartObject();
                         foreach (JsonProperty property in document.RootElement.EnumerateObject())
@@ -115,8 +107,7 @@ namespace TopuLauncher
                 }
                 catch
                 {
-                    // Leave the original Forge JSON untouched if another
-                    // profile is still being written or the file is locked.
+                    // Do not prevent Forge installation if a profile JSON is locked.
                 }
             }
         }
