@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace TopuLauncher
@@ -36,8 +37,6 @@ namespace TopuLauncher
                 UIElement.PreviewKeyDownEvent,
                 new KeyEventHandler(window.ProfileSaveFix_OnPreviewKeyDown));
 
-            // The existing Forge partial restores loader state when a profile changes.
-            // Run one more pass after that handler so the saved Minecraft version/RAM wins.
             window.LoadSavedProfileValuesAfterExistingHandlers();
         }
 
@@ -86,14 +85,24 @@ namespace TopuLauncher
 
         private static DependencyObject? GetParent(DependencyObject source)
         {
-            if (source is Visual || source is Visual3D)
+            try
             {
                 DependencyObject? visualParent = VisualTreeHelper.GetParent(source);
                 if (visualParent != null)
                     return visualParent;
             }
+            catch
+            {
+            }
 
-            return LogicalTreeHelper.GetParent(source);
+            try
+            {
+                return LogicalTreeHelper.GetParent(source);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private void CaptureCurrentProfileValues()
@@ -141,21 +150,17 @@ namespace TopuLauncher
                     {
                         Content = _capturedVersion
                     };
-
                     VersionBox.Items.Add(versionItem);
                 }
 
+                _loadingLoaderState = true;
+
                 if (versionItem != null)
-                {
-                    _loadingLoaderState = true;
                     VersionBox.SelectedItem = versionItem;
-                    RamSlider.Value = _capturedRamGb;
-                    _loadingLoaderState = false;
-                }
-                else
-                {
-                    RamSlider.Value = _capturedRamGb;
-                }
+
+                RamSlider.Value = _capturedRamGb;
+
+                _loadingLoaderState = false;
 
                 SaveProfileSettings(
                     profilePath,
@@ -167,9 +172,6 @@ namespace TopuLauncher
 
                 _gamePath = profilePath;
                 SaveRememberedProfile(_capturedProfileName);
-
-                // Keep the loader and the version/RAM in sync after the original
-                // SaveProfile_Click handler has finished its reload.
                 SaveLoaderState();
 
                 UpdateProfileCard();
