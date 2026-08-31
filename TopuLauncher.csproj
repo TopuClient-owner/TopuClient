@@ -35,13 +35,4 @@
     <Resource Include="Assets\TopuLauncher.ico" />
   </ItemGroup>
 
-  <!--
-    Forge 1.20.1's BootstrapLauncher must be launched through Java's module
-    path. Apply the source-level compatibility fix before every compilation.
-    This intentionally does not modify any GitHub Actions workflow.
-  -->
-  <Target Name="ApplyForgeLaunchFix" BeforeTargets="CoreCompile">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\BuildForgeLaunchFix.ps1&quot;" />
-  </Target>
-
 </Project>
