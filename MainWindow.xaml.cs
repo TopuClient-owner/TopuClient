@@ -1814,8 +1814,10 @@ private static readonly HttpClient Http = CreateHttpClient();
             NormalizeProfileName(
                 profileName);
 
-        SetActiveProfile(
-            profileName);
+        // Do NOT call SetActiveProfile() here.
+        // SetActiveProfile() reloads topu-profile.json and would overwrite
+        // the version/RAM values the user just selected in the UI.
+        // _gamePath already points to the active profile directory.
 
         string version =
             GetSelectedVersion();
