@@ -16,9 +16,6 @@ using CmlLib.Core.ProcessBuilder;
 
 namespace TopuLauncher
 {
-    // Java 8 is handled separately because api.adoptium.net can fail with
-    // DNS errors and Java 8 reports its version as 1.8.x.
-    // Java 17/21/25 handling is untouched.
     public partial class MainWindow
     {
         private static readonly object Java8HandlerRegistration = RegisterJava8LaunchHandler();
@@ -101,6 +98,13 @@ namespace TopuLauncher
                 WriteLog($"Selected Forge build: {selected.ForgeVersionName}");
                 string loaderVersionName = await forge.Install(selected);
 
+                // Forge 1.8.9 is a legacy LaunchWrapper-based installation.
+                // Some CmlLib/Forge combinations can generate the correct
+                // classpath entry without actually having the LaunchWrapper jar
+                // on disk. Ensure the exact legacy dependency exists before
+                // BuildProcessAsync creates the final process.
+                await EnsureForgeLegacyLaunchWrapperAsync();
+
                 MLaunchOption options = new MLaunchOption
                 {
                     Session = _session,
@@ -157,6 +161,58 @@ namespace TopuLauncher
             }
         }
 
+        private async Task EnsureForgeLegacyLaunchWrapperAsync()
+        {
+            string launchWrapperPath = Path.Combine(
+                _gamePath,
+                "libraries",
+                "net",
+                "minecraft",
+                "launchwrapper",
+                "1.12",
+                "launchwrapper-1.12.jar");
+
+            if (File.Exists(launchWrapperPath) && new FileInfo(launchWrapperPath).Length > 10000)
+            {
+                WriteLog($"Forge LaunchWrapper verified: {launchWrapperPath}");
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(launchWrapperPath)!);
+            string tempPath = launchWrapperPath + ".download-" + Guid.NewGuid().ToString("N");
+            const string url = "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar";
+
+            WriteLog("Forge LaunchWrapper is missing or invalid. Downloading official library...");
+            WriteLog($"LaunchWrapper URL: {url}");
+
+            try
+            {
+                using HttpResponseMessage response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                await using Stream input = await response.Content.ReadAsStreamAsync();
+                await using FileStream output = new FileStream(
+                    tempPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                    81920, FileOptions.SequentialScan);
+                await input.CopyToAsync(output, 81920, CancellationToken.None);
+                await output.FlushAsync(CancellationToken.None);
+
+                if (!File.Exists(tempPath) || new FileInfo(tempPath).Length <= 10000)
+                    throw new InvalidDataException("Downloaded LaunchWrapper jar is missing or too small.");
+
+                if (File.Exists(launchWrapperPath))
+                    File.Delete(launchWrapperPath);
+
+                File.Move(tempPath, launchWrapperPath);
+
+                WriteLog($"Forge LaunchWrapper installed: {launchWrapperPath}");
+            }
+            finally
+            {
+                TryDeleteFileWithRetry(tempPath);
+            }
+        }
+
         private async Task<string> EnsureJava8RuntimeAsync()
         {
             string runtimeFolder = Path.Combine(_gamePath, "runtime", "java8");
@@ -176,8 +232,6 @@ namespace TopuLauncher
 
             StatusText.Text = "Downloading Java 8...";
 
-            // Official Eclipse Temurin 8 Windows x64 JRE release asset.
-            // This intentionally bypasses api.adoptium.net.
             const string downloadUrl =
                 "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u502-b07/OpenJDK8U-jre_x64_windows_hotspot_8u502b07.zip";
 
@@ -282,7 +336,6 @@ namespace TopuLauncher
                 string combined = stdout + Environment.NewLine + stderr;
                 WriteLog($"Java 8 verification [{javaPath}]: {combined.Trim()}");
 
-                // Java 8 reports 1.8.x, not 8.x.
                 return combined.Contains("version \"1.8.", StringComparison.OrdinalIgnoreCase) ||
                        combined.Contains("openjdk version \"1.8.", StringComparison.OrdinalIgnoreCase);
             }
