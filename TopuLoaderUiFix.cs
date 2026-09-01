@@ -40,6 +40,11 @@ namespace TopuLauncher
             if (ProfileSelector != null)
                 ProfileSelector.SelectionChanged += LoaderUiFix_ProfileChanged;
 
+            TabProfiles.AddHandler(
+                Button.ClickEvent,
+                new RoutedEventHandler(LoaderUiFix_ButtonClicked),
+                true);
+
             ApplyLoaderUiFix();
         }
 
@@ -54,6 +59,15 @@ namespace TopuLauncher
         private void LoaderUiFix_ProfileChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (!_runtimeUiReady || e.OriginalSource != ProfileSelector)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
+        }
+
+        private void LoaderUiFix_ButtonClicked(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource is not Button button ||
+                !string.Equals(button.Content?.ToString(), "Save Profile Settings", StringComparison.OrdinalIgnoreCase))
                 return;
 
             Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
