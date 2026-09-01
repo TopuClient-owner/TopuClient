@@ -9,7 +9,23 @@ namespace TopuLauncher
     // display values whenever the runtime loader/profile changes.
     public partial class MainWindow
     {
+        private static readonly object LoaderUiFixRegistration = RegisterLoaderUiFix();
         private bool _loaderUiFixHooked;
+
+        private static object RegisterLoaderUiFix()
+        {
+            EventManager.RegisterClassHandler(
+                typeof(MainWindow),
+                FrameworkElement.LoadedEvent,
+                new RoutedEventHandler(LoaderUiFixLoaded));
+            return new object();
+        }
+
+        private static void LoaderUiFixLoaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is MainWindow window)
+                window.Dispatcher.BeginInvoke(new Action(window.InstallLoaderUiFix));
+        }
 
         private void InstallLoaderUiFix()
         {
@@ -24,7 +40,7 @@ namespace TopuLauncher
             if (ProfileSelector != null)
                 ProfileSelector.SelectionChanged += LoaderUiFix_ProfileChanged;
 
-            Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
+            ApplyLoaderUiFix();
         }
 
         private void LoaderUiFix_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -63,7 +79,6 @@ namespace TopuLauncher
 
                 int ram = Math.Clamp(settings.RamGb, 2, 12);
 
-                // XAML launch card values.
                 if (LaunchVersionLabel != null)
                     LaunchVersionLabel.Text = version;
 
@@ -76,8 +91,6 @@ namespace TopuLauncher
                 if (LaunchProfileLabel != null)
                     LaunchProfileLabel.Text = GetActiveProfileName();
 
-                // The loader text beside the active profile is intentionally
-                // unnamed in the original XAML. Find it through that card.
                 if (LaunchProfileLabel?.Parent is StackPanel profilePanel)
                 {
                     foreach (UIElement child in profilePanel.Children)
@@ -90,15 +103,13 @@ namespace TopuLauncher
                             if (detail is TextBlock text &&
                                 text != LaunchVersionLabel &&
                                 text != LaunchRamLabel &&
-                                text.Text != "  •  ")
+                                text.Text != "  •  " &&
+                                (text.Text.Equals("Fabric", StringComparison.OrdinalIgnoreCase) ||
+                                 text.Text.Equals("Forge", StringComparison.OrdinalIgnoreCase) ||
+                                 text.Text.Equals("Quilt", StringComparison.OrdinalIgnoreCase)))
                             {
-                                if (string.Equals(text.Text, "Fabric", StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(text.Text, "Forge", StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(text.Text, "Quilt", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    text.Text = loader;
-                                    break;
-                                }
+                                text.Text = loader;
+                                break;
                             }
                         }
                     }
@@ -107,7 +118,6 @@ namespace TopuLauncher
                 if (SelectedProfileLabel != null)
                     SelectedProfileLabel.Text = $"● {GetActiveProfileName()}   •   {loader} {version}   •   {ram}GB RAM";
 
-                // The sidebar used to permanently say Fabric.
                 SetSidebarLoaderText(loader);
             }
             catch (Exception ex)
@@ -118,14 +128,12 @@ namespace TopuLauncher
 
         private void SetSidebarLoaderText(string loader)
         {
-            if (TabLaunch == null)
-                return;
-
-            // Search the whole window for the original static sidebar label.
             foreach (TextBlock text in FindTextBlocks(this))
             {
-                if (string.Equals(text.Text, "Fabric PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(text.Text, "Multi-Loader Launcher", StringComparison.OrdinalIgnoreCase))
+                if (text.Text.Equals("Fabric PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
+                    text.Text.Equals("Multi-Loader Launcher", StringComparison.OrdinalIgnoreCase) ||
+                    text.Text.Equals("Forge PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
+                    text.Text.Equals("Quilt PvP Launcher", StringComparison.OrdinalIgnoreCase))
                 {
                     text.Text = $"{loader} PvP Launcher";
                     return;
