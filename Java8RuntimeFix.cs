@@ -99,10 +99,6 @@ namespace TopuLauncher
                 string loaderVersionName = await forge.Install(selected);
 
                 // Forge 1.8.9 is a legacy LaunchWrapper-based installation.
-                // Some CmlLib/Forge combinations can generate the correct
-                // classpath entry without actually having the LaunchWrapper jar
-                // on disk. Ensure the exact legacy dependency exists before
-                // BuildProcessAsync creates the final process.
                 await EnsureForgeLegacyLaunchWrapperAsync();
 
                 MLaunchOption options = new MLaunchOption
@@ -178,8 +174,16 @@ namespace TopuLauncher
                 return;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(launchWrapperPath)!);
-            string tempPath = launchWrapperPath + ".download-" + Guid.NewGuid().ToString("N");
+            string? directory = Path.GetDirectoryName(launchWrapperPath);
+            if (string.IsNullOrWhiteSpace(directory))
+                throw new InvalidOperationException("Could not determine LaunchWrapper directory.");
+
+            Directory.CreateDirectory(directory);
+
+            string tempPath = Path.Combine(
+                directory,
+                ".launchwrapper-" + Guid.NewGuid().ToString("N") + ".download");
+
             const string url = "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar";
 
             WriteLog("Forge LaunchWrapper is missing or invalid. Downloading official library...");
@@ -187,23 +191,35 @@ namespace TopuLauncher
 
             try
             {
-                using HttpResponseMessage response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
+                using (HttpResponseMessage response = await Http.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead))
+                {
+                    response.EnsureSuccessStatusCode();
 
-                await using Stream input = await response.Content.ReadAsStreamAsync();
-                await using FileStream output = new FileStream(
-                    tempPath, FileMode.Create, FileAccess.Write, FileShare.None,
-                    81920, FileOptions.SequentialScan);
-                await input.CopyToAsync(output, 81920, CancellationToken.None);
-                await output.FlushAsync(CancellationToken.None);
+                    using Stream input = await response.Content.ReadAsStreamAsync();
+                    using FileStream output = new FileStream(
+                        tempPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        81920,
+                        FileOptions.SequentialScan);
+
+                    await input.CopyToAsync(input.Length > 0 ? output : output, 81920, CancellationToken.None);
+                    await output.FlushAsync(CancellationToken.None);
+                }
 
                 if (!File.Exists(tempPath) || new FileInfo(tempPath).Length <= 10000)
                     throw new InvalidDataException("Downloaded LaunchWrapper jar is missing or too small.");
 
-                if (File.Exists(launchWrapperPath))
-                    File.Delete(launchWrapperPath);
+                // Never delete/move the destination blindly. A previous Java/Minecraft
+                // process or antivirus scanner can briefly hold the existing file.
+                // The shared retry helper waits for the handle to be released.
+                await MoveFileWithRetryAsync(tempPath, launchWrapperPath);
 
-                File.Move(tempPath, launchWrapperPath);
+                if (!File.Exists(launchWrapperPath) || new FileInfo(launchWrapperPath).Length <= 10000)
+                    throw new InvalidDataException("LaunchWrapper installation could not be verified.");
 
                 WriteLog($"Forge LaunchWrapper installed: {launchWrapperPath}");
             }
