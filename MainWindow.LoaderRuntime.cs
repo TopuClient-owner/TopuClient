@@ -677,6 +677,27 @@ namespace TopuLauncher
                 ? idElement.GetString() ?? $"quilt-loader-{loaderVersion}-{minecraftVersion}"
                 : $"quilt-loader-{loaderVersion}-{minecraftVersion}";
 
+            // CmlLib needs the custom version to explicitly point at the
+            // vanilla game jar. Quilt's profile metadata does not reliably
+            // include the legacy `jar` field, so Knot can start but cannot
+            // discover Minecraft's game provider on the final classpath.
+            // Keep the Quilt profile's inherited version and add the explicit
+            // jar mapping that CmlLib's version builder understands.
+            using (JsonDocument sourceDoc = JsonDocument.Parse(profileJson))
+            {
+                Dictionary<string, JsonElement> profile = new Dictionary<string, JsonElement>();
+                foreach (JsonProperty property in sourceDoc.RootElement.EnumerateObject())
+                    profile[property.Name] = property.Value.Clone();
+
+                profile["inheritsFrom"] = JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone();
+                profile["jar"] = JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone();
+
+                profileJson = JsonSerializer.Serialize(profile, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+            }
+
             string versionDirectory = Path.Combine(_gamePath, "versions", id);
             Directory.CreateDirectory(versionDirectory);
             string jsonPath = Path.Combine(versionDirectory, id + ".json");
@@ -715,6 +736,8 @@ namespace TopuLauncher
             }
 
             WriteLog($"Quilt installed: {id}");
+            WriteLog($"Quilt game inheritance: {minecraftVersion}");
+            WriteLog($"Quilt CmlLib jar mapping: {minecraftVersion}");
             return id;
         }
 
