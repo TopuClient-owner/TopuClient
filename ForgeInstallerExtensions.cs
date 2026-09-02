@@ -1,106 +1,108 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Tasks;
 using CmlLib.Core.Installer.Forge;
-using CmlLib.Core.Installer.Forge.Installers;
-using CmlLib.Core.Installer.Forge.Versions;
 
 namespace TopuLauncher
 {
     internal static class ForgeInstallerExtensions
     {
-        private static readonly HttpClient Http = new HttpClient();
+        private static readonly HttpClient Http = new HttpClient
+        {
+            Timeout = TimeSpan.FromMinutes(5)
+        };
 
         public static async Task<string> Install(this ForgeInstaller installer, ForgeVersion version)
         {
             string installedVersion = await installer.Install(version, new ForgeInstallOptions());
 
-            // CmlLib's legacy Forge installer can leave old Forge libraries absent
-            // even though they are declared by the generated Forge version JSON.
-            // Repair every declared artifact before the process is built so the
-            // Java 8 LaunchWrapper classpath is actually usable.
+            // Forge 1.8.9's installer can skip legacy client libraries because
+            // of its old side rules. Repair the files before BuildProcessAsync.
             await RepairForgeLibrariesAsync(installedVersion);
-
             PatchForgeVersionJson(installedVersion);
             return installedVersion;
         }
 
         private static async Task RepairForgeLibrariesAsync(string versionName)
         {
-            if (string.IsNullOrWhiteSpace(versionName))
-                return;
-
             string profilesRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TopuClient",
-                "profiles");
+                "TopuClient", "profiles");
 
-            if (!Directory.Exists(profilesRoot))
+            if (!Directory.Exists(profilesRoot) || string.IsNullOrWhiteSpace(versionName))
                 return;
 
-            string fileName = versionName + ".json";
-            string[] matches = Directory.GetFiles(profilesRoot, fileName, SearchOption.AllDirectories);
+            string[] matches = Directory.GetFiles(
+                profilesRoot, versionName + ".json", SearchOption.AllDirectories);
 
             foreach (string jsonPath in matches)
             {
+                string? gameRoot = FindGameRoot(jsonPath);
+                if (gameRoot == null)
+                    continue;
+
                 try
                 {
-                    string json = await File.ReadAllTextAsync(jsonPath);
-                    using JsonDocument document = JsonDocument.Parse(json);
+                    using JsonDocument document = JsonDocument.Parse(await File.ReadAllTextAsync(jsonPath));
 
-                    if (!document.RootElement.TryGetProperty("libraries", out JsonElement libraries) ||
-                        libraries.ValueKind != JsonValueKind.Array)
-                        continue;
-
-                    string? gameRoot = FindGameRoot(jsonPath);
-                    if (gameRoot == null)
-                        continue;
-
-                    foreach (JsonElement library in libraries.EnumerateArray())
+                    if (document.RootElement.TryGetProperty("libraries", out JsonElement libraries) &&
+                        libraries.ValueKind == JsonValueKind.Array)
                     {
-                        if (!library.TryGetProperty("name", out JsonElement nameElement) ||
-                            nameElement.ValueKind != JsonValueKind.String)
-                            continue;
-
-                        string? name = nameElement.GetString();
-                        if (string.IsNullOrWhiteSpace(name))
-                            continue;
-
-                        // Old Forge JSON normally uses Maven coordinates:
-                        // group:artifact:version[:classifier].
-                        // The artifact download entry, when present, is preferred.
-                        if (library.TryGetProperty("downloads", out JsonElement downloads) &&
-                            downloads.ValueKind == JsonValueKind.Object &&
-                            downloads.TryGetProperty("artifact", out JsonElement artifact) &&
-                            artifact.ValueKind == JsonValueKind.Object)
+                        foreach (JsonElement library in libraries.EnumerateArray())
                         {
-                            await EnsureArtifactAsync(gameRoot, name, artifact);
-                        }
-                        else
-                        {
-                            await EnsureLegacyMavenArtifactAsync(gameRoot, name);
+                            if (!library.TryGetProperty("name", out JsonElement nameElement) ||
+                                nameElement.ValueKind != JsonValueKind.String)
+                                continue;
+
+                            string? name = nameElement.GetString();
+                            if (string.IsNullOrWhiteSpace(name))
+                                continue;
+
+                            if (library.TryGetProperty("downloads", out JsonElement downloads) &&
+                                downloads.ValueKind == JsonValueKind.Object &&
+                                downloads.TryGetProperty("artifact", out JsonElement artifact) &&
+                                artifact.ValueKind == JsonValueKind.Object)
+                            {
+                                await EnsureArtifactAsync(gameRoot, name, artifact);
+                            }
+                            else
+                            {
+                                await EnsureLegacyArtifactAsync(gameRoot, name);
+                            }
                         }
                     }
+
+                    // Explicitly repair the three legacy jars Forge 1.8.9 needs
+                    // before its LaunchWrapper transformers can run.
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "org/ow2/asm/asm-all/5.0.3/asm-all-5.0.3.jar",
+                        "org/objectweb/asm/ClassVisitor.class");
+
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "lzma/lzma/0.0.1/lzma-0.0.1.jar",
+                        "LZMA/LzmaInputStream.class");
+
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+                        "net/minecraft/launchwrapper/Launch.class");
 
                     return;
                 }
                 catch (Exception ex)
                 {
-                    // Dependency repair should report the problem, but do not hide
-                    // the original Forge installer error if the JSON is temporarily locked.
-                    System.Diagnostics.Debug.WriteLine(
-                        "Forge dependency repair failed: " + ex);
+                    System.Diagnostics.Debug.WriteLine("Forge dependency repair failed: " + ex);
                 }
             }
         }
 
-        private static async Task EnsureArtifactAsync(
-            string gameRoot,
-            string libraryName,
-            JsonElement artifact)
+        private static async Task EnsureArtifactAsync(string gameRoot, string name, JsonElement artifact)
         {
             if (!artifact.TryGetProperty("path", out JsonElement pathElement) ||
                 pathElement.ValueKind != JsonValueKind.String)
@@ -111,20 +113,17 @@ namespace TopuLauncher
                 return;
 
             string destination = Path.Combine(
-                gameRoot,
-                "libraries",
-                relativePath.Replace('/', Path.DirectorySeparatorChar));
+                gameRoot, "libraries", relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-            bool valid = File.Exists(destination) && new FileInfo(destination).Length > 0;
+            bool valid = IsNonEmptyFile(destination);
 
             if (valid && artifact.TryGetProperty("sha1", out JsonElement shaElement) &&
                 shaElement.ValueKind == JsonValueKind.String)
             {
-                string? expectedSha1 = shaElement.GetString();
-                if (!string.IsNullOrWhiteSpace(expectedSha1))
+                string? expected = shaElement.GetString();
+                if (!string.IsNullOrWhiteSpace(expected))
                     valid = string.Equals(
-                        await ComputeSha1Async(destination),
-                        expectedSha1,
+                        await Sha1Async(destination), expected,
                         StringComparison.OrdinalIgnoreCase);
             }
 
@@ -139,92 +138,112 @@ namespace TopuLauncher
             if (string.IsNullOrWhiteSpace(url))
                 url = "https://libraries.minecraft.net/" + relativePath.Replace('\\', '/');
 
-            await DownloadArtifactAsync(destination, url, libraryName);
+            await DownloadAsync(destination, url, name);
         }
 
-        private static async Task EnsureLegacyMavenArtifactAsync(
-            string gameRoot,
-            string libraryName)
+        private static async Task EnsureLegacyArtifactAsync(string gameRoot, string name)
         {
-            string[] parts = libraryName.Split(':');
+            string[] parts = name.Split(':');
             if (parts.Length < 3)
                 return;
 
-            string groupPath = parts[0].Replace('.', '/');
+            string group = parts[0].Replace('.', '/');
             string artifact = parts[1];
             string version = parts[2];
-            string? classifier = parts.Length >= 4 ? parts[3] : null;
+            string classifier = parts.Length > 3 ? "-" + parts[3] : "";
+            string fileName = artifact + "-" + version + classifier + ".jar";
+            string relativePath = group + "/" + artifact + "/" + version + "/" + fileName;
 
-            string fileName = artifact + "-" + version +
-                (string.IsNullOrWhiteSpace(classifier) ? "" : "-" + classifier) +
-                ".jar";
-
-            string relativePath = groupPath + "/" + artifact + "/" + version + "/" + fileName;
-            string destination = Path.Combine(
-                gameRoot,
-                "libraries",
-                relativePath.Replace('/', Path.DirectorySeparatorChar));
-
-            if (File.Exists(destination) && new FileInfo(destination).Length > 0)
-                return;
-
-            string url = "https://libraries.minecraft.net/" + relativePath;
-            await DownloadArtifactAsync(destination, url, libraryName);
+            await DownloadIfMissingAsync(
+                Path.Combine(gameRoot, "libraries", relativePath.Replace('/', Path.DirectorySeparatorChar)),
+                "https://libraries.minecraft.net/" + relativePath,
+                name);
         }
 
-        private static async Task DownloadArtifactAsync(
-            string destination,
-            string url,
-            string libraryName)
+        private static async Task EnsureKnownJarAsync(string gameRoot, string relativePath, string requiredClass)
+        {
+            string destination = Path.Combine(
+                gameRoot, "libraries", relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (IsValidJar(destination, requiredClass))
+                return;
+
+            await DownloadAsync(
+                destination,
+                "https://libraries.minecraft.net/" + relativePath,
+                relativePath);
+
+            if (!IsValidJar(destination, requiredClass))
+                throw new InvalidDataException("Forge library failed validation: " + relativePath);
+        }
+
+        private static async Task DownloadIfMissingAsync(string destination, string url, string name)
+        {
+            if (IsNonEmptyFile(destination))
+                return;
+            await DownloadAsync(destination, url, name);
+        }
+
+        private static async Task DownloadAsync(string destination, string url, string name)
         {
             string? directory = Path.GetDirectoryName(destination);
             if (string.IsNullOrWhiteSpace(directory))
-                throw new InvalidOperationException("Could not determine Forge library directory for " + libraryName);
+                throw new InvalidOperationException("Invalid Forge library path: " + name);
 
             Directory.CreateDirectory(directory);
-
-            string temporary = destination + ".topu-download-" + Guid.NewGuid().ToString("N");
+            string temp = destination + ".topu-download-" + Guid.NewGuid().ToString("N");
 
             try
             {
                 using HttpResponseMessage response = await Http.GetAsync(
-                    url,
-                    HttpCompletionOption.ResponseHeadersRead);
+                    url, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
 
                 await using Stream input = await response.Content.ReadAsStreamAsync();
                 await using FileStream output = new FileStream(
-                    temporary,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    81920,
-                    FileOptions.SequentialScan);
-
+                    temp, FileMode.Create, FileAccess.Write, FileShare.None,
+                    81920, FileOptions.SequentialScan);
                 await input.CopyToAsync(output, 81920);
                 await output.FlushAsync();
                 output.Close();
 
-                if (!File.Exists(temporary) || new FileInfo(temporary).Length == 0)
-                    throw new InvalidDataException("Downloaded Forge library is empty: " + libraryName);
+                if (!File.Exists(temp) || new FileInfo(temp).Length == 0)
+                    throw new InvalidDataException("Downloaded Forge library is empty: " + name);
 
-                if (File.Exists(destination))
-                    File.Delete(destination);
-
-                File.Move(temporary, destination);
+                File.Move(temp, destination, true);
             }
             finally
             {
-                try
-                {
-                    if (File.Exists(temporary))
-                        File.Delete(temporary);
-                }
-                catch
-                {
-                    // Best effort cleanup.
-                }
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
             }
+        }
+
+        private static bool IsNonEmptyFile(string path) =>
+            File.Exists(path) && new FileInfo(path).Length > 0;
+
+        private static bool IsValidJar(string path, string requiredClass)
+        {
+            if (!IsNonEmptyFile(path))
+                return false;
+
+            try
+            {
+                using FileStream stream = File.OpenRead(path);
+                using ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read, false);
+                return archive.GetEntry(requiredClass) != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static async Task<string> Sha1Async(string path)
+        {
+            using SHA1 sha1 = SHA1.Create();
+            await using FileStream stream = File.OpenRead(path);
+            byte[] hash = await sha1.ComputeHashAsync(stream);
+            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         private static string? FindGameRoot(string jsonPath)
@@ -232,34 +251,11 @@ namespace TopuLauncher
             DirectoryInfo? directory = new FileInfo(jsonPath).Directory;
             while (directory != null)
             {
-                string libraries = Path.Combine(directory.FullName, "libraries");
-                if (Directory.Exists(libraries))
-                    return directory.FullName;
-
-                directory = directory.Parent;
-            }
-
-            // If the libraries directory does not exist yet, the profile root is
-            // the directory containing the versions directory, when present.
-            directory = new FileInfo(jsonPath).Directory;
-            while (directory != null)
-            {
                 if (Directory.Exists(Path.Combine(directory.FullName, "versions")))
                     return directory.FullName;
-
                 directory = directory.Parent;
             }
-
             return null;
-        }
-
-        private static async Task<string> ComputeSha1Async(string path)
-        {
-            using System.Security.Cryptography.SHA1 sha1 =
-                System.Security.Cryptography.SHA1.Create();
-            await using FileStream stream = File.OpenRead(path);
-            byte[] hash = await sha1.ComputeHashAsync(stream);
-            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         private static void PatchForgeVersionJson(string versionName)
@@ -269,119 +265,73 @@ namespace TopuLauncher
 
             string profilesRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TopuClient",
-                "profiles");
-
+                "TopuClient", "profiles");
             if (!Directory.Exists(profilesRoot))
                 return;
 
-            string fileName = versionName + ".json";
-            string[] matches = Directory.GetFiles(profilesRoot, fileName, SearchOption.AllDirectories);
-
-            foreach (string path in matches)
+            foreach (string path in Directory.GetFiles(
+                profilesRoot, versionName + ".json", SearchOption.AllDirectories))
             {
                 try
                 {
-                    string json = File.ReadAllText(path);
-                    using JsonDocument document = JsonDocument.Parse(json);
-
+                    using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
                     if (!document.RootElement.TryGetProperty("arguments", out JsonElement arguments) ||
                         !arguments.TryGetProperty("jvm", out JsonElement jvm) ||
                         jvm.ValueKind != JsonValueKind.Array)
                         continue;
 
                     bool changed = false;
-                    List<JsonElementValue> values = new List<JsonElementValue>();
-                    foreach (JsonElement element in jvm.EnumerateArray())
-                    {
-                        if (element.ValueKind == JsonValueKind.String &&
-                            string.Equals(element.GetString(), "-p", StringComparison.Ordinal))
-                        {
-                            values.Add(new JsonElementValue("--module-path"));
-                            changed = true;
-                        }
-                        else
-                        {
-                            values.Add(new JsonElementValue(element));
-                        }
-                    }
-
-                    if (!changed)
-                        continue;
-
-                    using MemoryStream stream = new MemoryStream();
+                    using MemoryStream memory = new MemoryStream();
                     using (Utf8JsonWriter writer = new Utf8JsonWriter(
-                        stream,
-                        new JsonWriterOptions { Indented = true }))
+                        memory, new JsonWriterOptions { Indented = true }))
                     {
                         writer.WriteStartObject();
                         foreach (JsonProperty property in document.RootElement.EnumerateObject())
                         {
-                            if (property.NameEquals("arguments"))
+                            if (!property.NameEquals("arguments"))
                             {
-                                writer.WritePropertyName("arguments");
-                                writer.WriteStartObject();
-                                foreach (JsonProperty argumentProperty in property.Value.EnumerateObject())
+                                property.WriteTo(writer);
+                                continue;
+                            }
+
+                            writer.WritePropertyName("arguments");
+                            writer.WriteStartObject();
+                            foreach (JsonProperty argument in property.Value.EnumerateObject())
+                            {
+                                if (!argument.NameEquals("jvm"))
                                 {
-                                    if (argumentProperty.NameEquals("jvm"))
+                                    argument.WriteTo(writer);
+                                    continue;
+                                }
+
+                                writer.WritePropertyName("jvm");
+                                writer.WriteStartArray();
+                                foreach (JsonElement value in jvm.EnumerateArray())
+                                {
+                                    if (value.ValueKind == JsonValueKind.String &&
+                                        value.GetString() == "-p")
                                     {
-                                        writer.WritePropertyName("jvm");
-                                        writer.WriteStartArray();
-                                        foreach (JsonElementValue value in values)
-                                            value.WriteTo(writer);
-                                        writer.WriteEndArray();
+                                        writer.WriteStringValue("--module-path");
+                                        changed = true;
                                     }
                                     else
                                     {
-                                        argumentProperty.WriteTo(writer);
+                                        value.WriteTo(writer);
                                     }
                                 }
-                                writer.WriteEndObject();
+                                writer.WriteEndArray();
                             }
-                            else
-                            {
-                                property.WriteTo(writer);
-                            }
+                            writer.WriteEndObject();
                         }
                         writer.WriteEndObject();
                     }
 
-                    File.WriteAllText(path, System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+                    if (changed)
+                        File.WriteAllText(path, System.Text.Encoding.UTF8.GetString(memory.ToArray()));
+
                     return;
                 }
-                catch
-                {
-                    // Do not prevent Forge installation if a profile JSON is locked.
-                }
-            }
-        }
-
-        private readonly struct JsonElementValue
-        {
-            private readonly JsonElement _element;
-            private readonly string? _string;
-            private readonly bool _isString;
-
-            public JsonElementValue(string value)
-            {
-                _element = default;
-                _string = value;
-                _isString = true;
-            }
-
-            public JsonElementValue(JsonElement element)
-            {
-                _element = element.Clone();
-                _string = null;
-                _isString = false;
-            }
-
-            public void WriteTo(Utf8JsonWriter writer)
-            {
-                if (_isString)
-                    writer.WriteStringValue(_string);
-                else
-                    _element.WriteTo(writer);
+                catch { }
             }
         }
     }
