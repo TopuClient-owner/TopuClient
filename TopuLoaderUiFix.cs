@@ -61,7 +61,26 @@ namespace TopuLauncher
             if (!_runtimeUiReady || e.OriginalSource != ProfileSelector)
                 return;
 
-            Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
+            string profile = ProfileSelector.SelectedItem?.ToString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(profile))
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    // Explicitly switch the active game path before reading the
+                    // profile settings. This prevents the UI from displaying the
+                    // previous profile's loader/version/RAM while the new profile
+                    // is being selected.
+                    SetActiveProfile(profile);
+                    ApplyLoaderUiFix();
+                }
+                catch (Exception ex)
+                {
+                    WriteException("LOADER PROFILE SWITCH ERROR", ex);
+                }
+            }));
         }
 
         private void LoaderUiFix_ButtonClicked(object sender, RoutedEventArgs e)
