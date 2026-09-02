@@ -1,12 +1,16 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Windows;
 
 namespace TopuLauncher
 {
     public partial class App : Application
     {
+        private static Mutex? _singleInstanceMutex;
+        private const string SingleInstanceMutexName = "TopuClient.SingleInstance.9B3E4A72";
+
         protected override void OnStartup(StartupEventArgs e)
         {
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -15,6 +19,16 @@ namespace TopuLauncher
 
             try
             {
+                // Prevent Windows/a shortcut/installer from starting a second launcher
+                // process from the same click. Keep the first instance visible.
+                bool createdNew;
+                _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
+                if (!createdNew)
+                {
+                    Shutdown(0);
+                    return;
+                }
+
                 base.OnStartup(e);
                 MainWindow window = new MainWindow();
                 MainWindow = window;
@@ -31,6 +45,22 @@ namespace TopuLauncher
                     MessageBoxImage.Error);
                 Shutdown(-1);
             }
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            try
+            {
+                _singleInstanceMutex?.ReleaseMutex();
+                _singleInstanceMutex?.Dispose();
+                _singleInstanceMutex = null;
+            }
+            catch
+            {
+                // Never allow single-instance cleanup to prevent shutdown.
+            }
+
+            base.OnExit(e);
         }
 
         private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
