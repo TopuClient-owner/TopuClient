@@ -98,7 +98,6 @@ namespace TopuLauncher
                 WriteLog($"Selected Forge build: {selected.ForgeVersionName}");
                 string loaderVersionName = await forge.Install(selected);
 
-                // Forge 1.8.9 is a legacy LaunchWrapper-based installation.
                 await EnsureForgeLegacyLaunchWrapperAsync();
 
                 MLaunchOption options = new MLaunchOption
@@ -206,16 +205,15 @@ namespace TopuLauncher
                         81920,
                         FileOptions.SequentialScan);
 
-                    await input.CopyToAsync(input.Length > 0 ? output : output, 81920, CancellationToken.None);
+                    // Do not access input.Length here. HttpBaseStream does not support
+                    // Length when the response uses ResponseHeadersRead/streaming.
+                    await input.CopyToAsync(output, 81920, CancellationToken.None);
                     await output.FlushAsync(CancellationToken.None);
                 }
 
                 if (!File.Exists(tempPath) || new FileInfo(tempPath).Length <= 10000)
                     throw new InvalidDataException("Downloaded LaunchWrapper jar is missing or too small.");
 
-                // Never delete/move the destination blindly. A previous Java/Minecraft
-                // process or antivirus scanner can briefly hold the existing file.
-                // The shared retry helper waits for the handle to be released.
                 await MoveFileWithRetryAsync(tempPath, launchWrapperPath);
 
                 if (!File.Exists(launchWrapperPath) || new FileInfo(launchWrapperPath).Length <= 10000)
