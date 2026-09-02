@@ -98,7 +98,9 @@ namespace TopuLauncher
                 WriteLog($"Selected Forge build: {selected.ForgeVersionName}");
                 string loaderVersionName = await forge.Install(selected);
 
+                // Forge 1.8.9 is a legacy LaunchWrapper-based installation.
                 await EnsureForgeLegacyLaunchWrapperAsync();
+                await EnsureForgeLegacyAsmAsync();
 
                 MLaunchOption options = new MLaunchOption
                 {
@@ -205,8 +207,6 @@ namespace TopuLauncher
                         81920,
                         FileOptions.SequentialScan);
 
-                    // Do not access input.Length here. HttpBaseStream does not support
-                    // Length when the response uses ResponseHeadersRead/streaming.
                     await input.CopyToAsync(output, 81920, CancellationToken.None);
                     await output.FlushAsync(CancellationToken.None);
                 }
@@ -220,6 +220,94 @@ namespace TopuLauncher
                     throw new InvalidDataException("LaunchWrapper installation could not be verified.");
 
                 WriteLog($"Forge LaunchWrapper installed: {launchWrapperPath}");
+            }
+            finally
+            {
+                TryDeleteFileWithRetry(tempPath);
+            }
+        }
+
+        private async Task EnsureForgeLegacyAsmAsync()
+        {
+            string asmPath = Path.Combine(
+                _gamePath,
+                "libraries",
+                "org",
+                "ow2",
+                "asm",
+                "asm-all",
+                "5.0.3",
+                "asm-all-5.0.3.jar");
+
+            const string url = "https://libraries.minecraft.net/org/ow2/asm/asm-all/5.0.3/asm-all-5.0.3.jar";
+            const string requiredClass = "org/objectweb/asm/ClassVisitor.class";
+
+            bool valid = false;
+            if (File.Exists(asmPath))
+            {
+                try
+                {
+                    using FileStream stream = File.OpenRead(asmPath);
+                    using ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read, false);
+                    valid = archive.GetEntry(requiredClass) != null;
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"Forge ASM validation failed: {ex.Message}");
+                }
+            }
+
+            if (valid)
+            {
+                WriteLog($"Forge ASM verified: {asmPath}");
+                return;
+            }
+
+            string? directory = Path.GetDirectoryName(asmPath);
+            if (string.IsNullOrWhiteSpace(directory))
+                throw new InvalidOperationException("Could not determine ASM library directory.");
+
+            Directory.CreateDirectory(directory);
+
+            string tempPath = Path.Combine(
+                directory,
+                ".asm-all-" + Guid.NewGuid().ToString("N") + ".download");
+
+            WriteLog("Forge ASM 5.0.3 is missing or invalid. Downloading official library...");
+            WriteLog($"ASM URL: {url}");
+
+            try
+            {
+                using (HttpResponseMessage response = await Http.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead))
+                {
+                    response.EnsureSuccessStatusCode();
+                    using Stream input = await response.Content.ReadAsStreamAsync();
+                    using FileStream output = new FileStream(
+                        tempPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        81920,
+                        FileOptions.SequentialScan);
+                    await input.CopyToAsync(output, 81920, CancellationToken.None);
+                    await output.FlushAsync(CancellationToken.None);
+                }
+
+                bool downloadedValid = false;
+                using (FileStream stream = File.OpenRead(tempPath))
+                using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read, false))
+                {
+                    downloadedValid = archive.GetEntry(requiredClass) != null;
+                }
+
+                if (!downloadedValid)
+                    throw new InvalidDataException("Downloaded ASM 5.0.3 does not contain org/objectweb/asm/ClassVisitor.class.");
+
+                await MoveFileWithRetryAsync(tempPath, asmPath);
+
+                WriteLog($"Forge ASM 5.0.3 installed and verified: {asmPath}");
             }
             finally
             {
