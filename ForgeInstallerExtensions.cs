@@ -20,8 +20,8 @@ namespace TopuLauncher
         {
             string installedVersion = await installer.Install(version, new ForgeInstallOptions());
 
-            // Forge 1.8.9's installer can skip legacy client libraries because
-            // of its old side rules. Repair the files before BuildProcessAsync.
+            // Repair the critical legacy jars FIRST. The old Forge metadata contains
+            // side rules that can cause CmlLib's normal dependency pass to skip them.
             await RepairForgeLibrariesAsync(installedVersion);
             PatchForgeVersionJson(installedVersion);
             return installedVersion;
@@ -49,49 +49,62 @@ namespace TopuLauncher
                 {
                     using JsonDocument document = JsonDocument.Parse(await File.ReadAllTextAsync(jsonPath));
 
+                    // These three are required before Forge's LaunchWrapper transformers
+                    // can even begin. Do not let another optional/legacy library prevent
+                    // these from being repaired.
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "lzma/lzma/0.0.1/lzma-0.0.1.jar",
+                        "LZMA/LzmaInputStream.class",
+                        "521616dc7487b42bef0e803bd2fa3faf668101d7");
+
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "org/ow2/asm/asm-all/5.0.3/asm-all-5.0.3.jar",
+                        "org/objectweb/asm/ClassVisitor.class",
+                        null);
+
+                    await EnsureKnownJarAsync(
+                        gameRoot,
+                        "net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+                        "net/minecraft/launchwrapper/Launch.class",
+                        null);
+
                     if (document.RootElement.TryGetProperty("libraries", out JsonElement libraries) &&
                         libraries.ValueKind == JsonValueKind.Array)
                     {
                         foreach (JsonElement library in libraries.EnumerateArray())
                         {
-                            if (!library.TryGetProperty("name", out JsonElement nameElement) ||
-                                nameElement.ValueKind != JsonValueKind.String)
-                                continue;
-
-                            string? name = nameElement.GetString();
-                            if (string.IsNullOrWhiteSpace(name))
-                                continue;
-
-                            if (library.TryGetProperty("downloads", out JsonElement downloads) &&
-                                downloads.ValueKind == JsonValueKind.Object &&
-                                downloads.TryGetProperty("artifact", out JsonElement artifact) &&
-                                artifact.ValueKind == JsonValueKind.Object)
+                            try
                             {
-                                await EnsureArtifactAsync(gameRoot, name, artifact);
+                                if (!library.TryGetProperty("name", out JsonElement nameElement) ||
+                                    nameElement.ValueKind != JsonValueKind.String)
+                                    continue;
+
+                                string? name = nameElement.GetString();
+                                if (string.IsNullOrWhiteSpace(name))
+                                    continue;
+
+                                if (library.TryGetProperty("downloads", out JsonElement downloads) &&
+                                    downloads.ValueKind == JsonValueKind.Object &&
+                                    downloads.TryGetProperty("artifact", out JsonElement artifact) &&
+                                    artifact.ValueKind == JsonValueKind.Object)
+                                {
+                                    await EnsureArtifactAsync(gameRoot, name, artifact);
+                                }
+                                else
+                                {
+                                    await EnsureLegacyArtifactAsync(gameRoot, name);
+                                }
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                await EnsureLegacyArtifactAsync(gameRoot, name);
+                                // One bad optional legacy dependency must not stop the
+                                // critical Forge bootstrap libraries from being installed.
+                                System.Diagnostics.Debug.WriteLine("Forge optional library repair failed: " + ex);
                             }
                         }
                     }
-
-                    // Explicitly repair the three legacy jars Forge 1.8.9 needs
-                    // before its LaunchWrapper transformers can run.
-                    await EnsureKnownJarAsync(
-                        gameRoot,
-                        "org/ow2/asm/asm-all/5.0.3/asm-all-5.0.3.jar",
-                        "org/objectweb/asm/ClassVisitor.class");
-
-                    await EnsureKnownJarAsync(
-                        gameRoot,
-                        "lzma/lzma/0.0.1/lzma-0.0.1.jar",
-                        "LZMA/LzmaInputStream.class");
-
-                    await EnsureKnownJarAsync(
-                        gameRoot,
-                        "net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
-                        "net/minecraft/launchwrapper/Launch.class");
 
                     return;
                 }
@@ -160,21 +173,47 @@ namespace TopuLauncher
                 name);
         }
 
-        private static async Task EnsureKnownJarAsync(string gameRoot, string relativePath, string requiredClass)
+        private static async Task EnsureKnownJarAsync(
+            string gameRoot,
+            string relativePath,
+            string requiredClass,
+            string? expectedSha1)
         {
             string destination = Path.Combine(
                 gameRoot, "libraries", relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-            if (IsValidJar(destination, requiredClass))
-                return;
+            bool valid = IsValidJar(destination, requiredClass);
+            if (valid && !string.IsNullOrWhiteSpace(expectedSha1))
+                valid = string.Equals(
+                    await Sha1Async(destination), expectedSha1,
+                    StringComparison.OrdinalIgnoreCase);
 
-            await DownloadAsync(
-                destination,
-                "https://libraries.minecraft.net/" + relativePath,
-                relativePath);
+            if (!valid)
+            {
+                // Remove a corrupt/incorrect copy so the next download is unambiguous.
+                try
+                {
+                    if (File.Exists(destination))
+                        File.Delete(destination);
+                }
+                catch { }
+
+                await DownloadAsync(
+                    destination,
+                    "https://libraries.minecraft.net/" + relativePath,
+                    relativePath);
+            }
 
             if (!IsValidJar(destination, requiredClass))
-                throw new InvalidDataException("Forge library failed validation: " + relativePath);
+                throw new InvalidDataException("Forge library failed class validation: " + relativePath);
+
+            if (!string.IsNullOrWhiteSpace(expectedSha1))
+            {
+                string actual = await Sha1Async(destination);
+                if (!string.Equals(actual, expectedSha1, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        "Forge library SHA-1 mismatch: " + relativePath + " (" + actual + ")");
+            }
         }
 
         private static async Task DownloadIfMissingAsync(string destination, string url, string name)
