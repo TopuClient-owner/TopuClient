@@ -59,6 +59,7 @@ namespace TopuLauncher
                 MinecraftLauncher launcher = new MinecraftLauncher(minecraftPath);
                 StatusText.Text = $"Installing Minecraft {minecraftVersion}...";
                 await launcher.InstallAsync(minecraftVersion, CancellationToken.None);
+
                 StatusText.Text = $"Installing NeoForge for {minecraftVersion}...";
                 NeoForgeInstaller installer = new NeoForgeInstaller(launcher);
                 NeoForgeInstallOptions installOptions = new NeoForgeInstallOptions
@@ -68,10 +69,22 @@ namespace TopuLauncher
                     CancellationToken = CancellationToken.None,
                     InstallerOutput = new Progress<string>(line => WriteLog("[NeoForge] " + line))
                 };
-                string loaderVersionName = await installer.Install(minecraftVersion, installOptions);
+
+                string loaderVersionName;
+                try
+                {
+                    loaderVersionName = await installer.Install(minecraftVersion, installOptions);
+                }
+                catch (HttpRequestException ex) when (ex.Message.Contains("maven.neoforged.net", StringComparison.OrdinalIgnoreCase))
+                {
+                    WriteLog("CmlLib NeoForge metadata lookup failed. Retrying with Topu's NeoForge runtime discovery...");
+                    loaderVersionName = await InstallNeoForgeRuntimeAsync(minecraftVersion, javaPath, launcher);
+                }
+
                 WriteLog($"Selected NeoForge version: {loaderVersionName}");
                 await launcher.InstallAsync(loaderVersionName, CancellationToken.None);
                 await InstallUniversalPerformancePackAsync("NeoForge", minecraftVersion);
+
                 MLaunchOption options = new MLaunchOption
                 {
                     Session = _session,
