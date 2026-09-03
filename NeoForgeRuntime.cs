@@ -321,11 +321,15 @@ namespace TopuLauncher
             if (loaderBox == null)
                 return;
 
-            if (!loaderBox.Items.Cast<object>().Any(x =>
-                string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
+            // The existing create-profile dialog uses ItemsSource, so replace
+            // the source instead of modifying ComboBox.Items directly.
+            loaderBox.ItemsSource = new[]
             {
-                loaderBox.Items.Add("NeoForge");
-            }
+                "Fabric",
+                "Forge",
+                "Quilt",
+                "NeoForge"
+            };
 
             ComboBox? versionBox = combos.FirstOrDefault(x => x != loaderBox);
             if (versionBox == null)
