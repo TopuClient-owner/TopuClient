@@ -61,6 +61,14 @@ namespace TopuLauncher
             if (_universalLoaderHooksInstalled || _loaderBox == null)
                 return;
 
+            // NeoForge must be present in the actual selector before the
+            // dynamic version loader starts reading the selected loader.
+            if (!_loaderBox.Items.Cast<object>().Any(x =>
+                string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
+            {
+                _loaderBox.Items.Add("NeoForge");
+            }
+
             _universalLoaderHooksInstalled = true;
             _loaderBox.SelectionChanged += UniversalLoaderSelectionChanged;
             VersionBox.SelectionChanged += UniversalVersionSelectionChanged;
