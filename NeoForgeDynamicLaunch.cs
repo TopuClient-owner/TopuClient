@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -70,7 +71,18 @@ namespace TopuLauncher
                     InstallerOutput = new Progress<string>(line => WriteLog("[NeoForge] " + line))
                 };
 
-                string loaderVersionName = await installer.Install(minecraftVersion, installOptions);
+                string loaderVersionName;
+                try
+                {
+                    loaderVersionName = await installer.Install(minecraftVersion, installOptions);
+                }
+                catch (HttpRequestException ex) when (ex.Message.Contains("maven.neoforged.net", StringComparison.OrdinalIgnoreCase))
+                {
+                    WriteLog("NeoForge Maven DNS lookup failed.");
+                    WriteLog("Trying Topu's direct NeoForge runtime installer...");
+                    loaderVersionName = await InstallNeoForgeRuntimeAsync(minecraftVersion, javaPath, launcher);
+                }
+
                 WriteLog($"Selected NeoForge version: {loaderVersionName}");
                 await launcher.InstallAsync(loaderVersionName, CancellationToken.None);
                 await InstallUniversalPerformancePackAsync("NeoForge", minecraftVersion);
