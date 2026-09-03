@@ -70,17 +70,7 @@ namespace TopuLauncher
                     InstallerOutput = new Progress<string>(line => WriteLog("[NeoForge] " + line))
                 };
 
-                string loaderVersionName;
-                try
-                {
-                    loaderVersionName = await installer.Install(minecraftVersion, installOptions);
-                }
-                catch (HttpRequestException ex) when (ex.Message.Contains("maven.neoforged.net", StringComparison.OrdinalIgnoreCase))
-                {
-                    WriteLog("CmlLib NeoForge metadata lookup failed. Retrying with Topu's NeoForge runtime discovery...");
-                    loaderVersionName = await InstallNeoForgeRuntimeAsync(minecraftVersion, javaPath, launcher);
-                }
-
+                string loaderVersionName = await installer.Install(minecraftVersion, installOptions);
                 WriteLog($"Selected NeoForge version: {loaderVersionName}");
                 await launcher.InstallAsync(loaderVersionName, CancellationToken.None);
                 await InstallUniversalPerformancePackAsync("NeoForge", minecraftVersion);
