@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -25,7 +28,6 @@ namespace TopuLauncher
         };
 
         private bool _neoForgeHooksInstalled;
-        private bool _neoForgeProfileHookInstalled;
         private bool _neoForgeLaunchHookInstalled;
 
         // Register a Window Loaded hook without changing the existing
@@ -213,7 +215,7 @@ namespace TopuLauncher
                 if (_session == null)
                     throw new InvalidOperationException("Could not create a Minecraft session.");
 
-                // All requested NeoForge versions are in the Java 21 era.
+                // All requested NeoForge versions use Java 21.
                 string javaPath = await EnsureJavaAsync(21);
                 MinecraftPath minecraftPath = new MinecraftPath(_gamePath);
                 MinecraftLauncher launcher = new MinecraftLauncher(minecraftPath);
@@ -239,9 +241,8 @@ namespace TopuLauncher
 
                 WriteLog($"Selected NeoForge version: {loaderVersionName}");
 
-                // The NeoForge installer intentionally does not install every
-                // vanilla runtime dependency, so CmlLib must complete the
-                // selected NeoForge version before launching it.
+                // NeoForge's installer leaves some vanilla/runtime files to
+                // CmlLib, so complete the installed version before launching.
                 StatusText.Text = "Installing NeoForge dependencies...";
                 await launcher.InstallAsync(loaderVersionName, CancellationToken.None);
 
