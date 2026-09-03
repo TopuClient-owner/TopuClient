@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Windows;
 
 namespace TopuLauncher
@@ -11,10 +10,7 @@ namespace TopuLauncher
 
         private static bool RegisterPerformanceCompatibilityHook()
         {
-            EventManager.RegisterClassHandler(
-                typeof(MainWindow),
-                FrameworkElement.LoadedEvent,
-                new RoutedEventHandler(ApplyPerformanceCompatibility));
+            EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent, new RoutedEventHandler(ApplyPerformanceCompatibility));
             return true;
         }
 
@@ -23,9 +19,6 @@ namespace TopuLauncher
             if (sender is not MainWindow window)
                 return;
 
-            // The original launcher performance list contained Sodium Extra and
-            // Krypton. Keep the same six slots but replace the Fabric-only/old
-            // entries with cross-loader performance mods.
             PerformanceMods[0] = ("fabric-api", "Fabric API");
             PerformanceMods[1] = ("sodium", "Sodium");
             PerformanceMods[2] = ("lithium", "Lithium");
@@ -33,16 +26,15 @@ namespace TopuLauncher
             PerformanceMods[4] = ("ferrite-core", "FerriteCore");
             PerformanceMods[5] = ("immediatelyfast", "ImmediatelyFast");
 
-            RemoveLegacySodiumExtra(window._gamePath);
+            RemoveLegacyPerformanceMods(window, window._gamePath);
         }
 
-        private static void RemoveLegacySodiumExtra(string gamePath)
+        private static void RemoveLegacyPerformanceMods(MainWindow window, string gamePath)
         {
             try
             {
                 string modsPath = Path.Combine(gamePath, "mods");
-                if (!Directory.Exists(modsPath))
-                    return;
+                if (!Directory.Exists(modsPath)) return;
 
                 foreach (string file in Directory.EnumerateFiles(modsPath, "*.jar"))
                 {
