@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace TopuLauncher
@@ -22,23 +23,9 @@ namespace TopuLauncher
 
         private static object RegisterLoaderUiFix()
         {
-            EventManager.RegisterClassHandler(
-                typeof(MainWindow),
-                FrameworkElement.LoadedEvent,
-                new RoutedEventHandler(LoaderUiFixLoaded));
-
-            EventManager.RegisterClassHandler(
-                typeof(ComboBox),
-                FrameworkElement.LoadedEvent,
-                new RoutedEventHandler(LoaderComboLoaded),
-                true);
-
-            EventManager.RegisterClassHandler(
-                typeof(ComboBox),
-                Selector.SelectionChangedEvent,
-                new SelectionChangedEventHandler(LoaderComboSelectionChanged),
-                true);
-
+            EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent, new RoutedEventHandler(LoaderUiFixLoaded));
+            EventManager.RegisterClassHandler(typeof(ComboBox), FrameworkElement.LoadedEvent, new RoutedEventHandler(LoaderComboLoaded), true);
+            EventManager.RegisterClassHandler(typeof(ComboBox), Selector.SelectionChangedEvent, new SelectionChangedEventHandler(LoaderComboSelectionChanged), true);
             return new object();
         }
 
@@ -50,54 +37,34 @@ namespace TopuLauncher
 
         private static bool IsLoaderCombo(ComboBox combo)
         {
-            return combo.Items.Cast<object>()
-                .Select(x => x?.ToString() ?? string.Empty)
-                .Any(x => x.Equals("Vanilla", StringComparison.OrdinalIgnoreCase))
-                && combo.Items.Cast<object>()
-                    .Select(x => x?.ToString() ?? string.Empty)
-                    .Any(x => x.Equals("Fabric", StringComparison.OrdinalIgnoreCase));
+            return combo.Items.Cast<object>().Select(x => x?.ToString() ?? string.Empty).Any(x => x.Equals("Vanilla", StringComparison.OrdinalIgnoreCase))
+                && combo.Items.Cast<object>().Select(x => x?.ToString() ?? string.Empty).Any(x => x.Equals("Fabric", StringComparison.OrdinalIgnoreCase));
         }
 
         private static void LoaderComboLoaded(object sender, RoutedEventArgs e)
         {
-            if (sender is not ComboBox combo || !IsLoaderCombo(combo))
-                return;
-
-            if (!combo.Items.Cast<object>().Any(x =>
-                    string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
-            {
+            if (sender is not ComboBox combo || !IsLoaderCombo(combo)) return;
+            if (!combo.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
                 combo.Items.Add("NeoForge");
-            }
         }
 
         private static void LoaderComboSelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (sender is not ComboBox combo || !IsLoaderCombo(combo))
-                return;
-
-            string selected = combo.SelectedItem?.ToString() ?? string.Empty;
-            if (!selected.Equals("NeoForge", StringComparison.OrdinalIgnoreCase))
-                return;
+            if (sender is not ComboBox combo || !IsLoaderCombo(combo)) return;
+            if (!string.Equals(combo.SelectedItem?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)) return;
 
             combo.Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
                 {
                     Window? owner = Window.GetWindow(combo);
-                    if (owner == null)
-                        return;
-
+                    if (owner == null) return;
                     ComboBox? versionCombo = FindVersionCombo(owner, combo);
-                    if (versionCombo == null)
-                        return;
-
+                    if (versionCombo == null) return;
                     versionCombo.ItemsSource = NeoForgeUiVersions;
                     versionCombo.SelectedIndex = 0;
                 }
-                catch
-                {
-                    // Runtime UI remains responsible for its normal controls.
-                }
+                catch { }
             }));
         }
 
@@ -105,17 +72,10 @@ namespace TopuLauncher
         {
             foreach (DependencyObject child in FindVisualChildren(root))
             {
-                if (child is not ComboBox combo || ReferenceEquals(combo, loaderCombo))
-                    continue;
-
-                if (combo.ItemsSource is IEnumerable<string> source &&
-                    source.Any(x => x.Equals("1.8.9", StringComparison.OrdinalIgnoreCase) ||
-                                    x.Equals("1.21.1", StringComparison.OrdinalIgnoreCase)))
-                {
+                if (child is not ComboBox combo || ReferenceEquals(combo, loaderCombo)) continue;
+                if (combo.ItemsSource is IEnumerable<string> source && source.Any(x => x.Equals("1.8.9", StringComparison.OrdinalIgnoreCase) || x.Equals("1.21.1", StringComparison.OrdinalIgnoreCase)))
                     return combo;
-                }
             }
-
             return null;
         }
 
@@ -126,76 +86,52 @@ namespace TopuLauncher
             {
                 DependencyObject child = VisualTreeHelper.GetChild(root, i);
                 yield return child;
-
-                foreach (DependencyObject nested in FindVisualChildren(child))
-                    yield return nested;
+                foreach (DependencyObject nested in FindVisualChildren(child)) yield return nested;
             }
         }
 
         private void InstallLoaderUiFix()
         {
-            if (_loaderUiFixHooked)
-                return;
-
+            if (_loaderUiFixHooked) return;
             _loaderUiFixHooked = true;
 
             if (_loaderBox != null)
             {
-                if (!_loaderBox.Items.Cast<object>().Any(x =>
-                        string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
+                if (!_loaderBox.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), "NeoForge", StringComparison.OrdinalIgnoreCase)))
                     _loaderBox.Items.Add("NeoForge");
-
                 _loaderBox.SelectionChanged += LoaderUiFix_SelectionChanged;
             }
 
             if (ProfileSelector != null)
                 ProfileSelector.SelectionChanged += LoaderUiFix_ProfileChanged;
 
-            TabProfiles.AddHandler(
-                Button.ClickEvent,
-                new RoutedEventHandler(LoaderUiFix_ButtonClicked),
-                true);
-
+            TabProfiles.AddHandler(Button.ClickEvent, new RoutedEventHandler(LoaderUiFix_ButtonClicked), true);
             ApplyLoaderUiFix();
         }
 
         private void LoaderUiFix_SelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            if (!_runtimeUiReady || e.OriginalSource != _loaderBox)
-                return;
-
+            if (!_runtimeUiReady || e.OriginalSource != _loaderBox) return;
             Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
         }
 
         private void LoaderUiFix_ProfileChanged(object? sender, SelectionChangedEventArgs e)
         {
-            if (!_runtimeUiReady || e.OriginalSource != ProfileSelector)
-                return;
-
+            if (!_runtimeUiReady || e.OriginalSource != ProfileSelector) return;
             string profile = ProfileSelector.SelectedItem?.ToString() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(profile))
-                return;
+            if (string.IsNullOrWhiteSpace(profile)) return;
 
             try
             {
-                // Switch the active game path FIRST. The existing runtime handler
-                // queues its refresh, so this prevents the previous profile's
-                // loader/version/RAM from being read for one UI cycle.
                 SetActiveProfile(profile);
                 ApplyLoaderUiFix();
             }
-            catch (Exception ex)
-            {
-                WriteException("LOADER PROFILE SWITCH ERROR", ex);
-            }
+            catch (Exception ex) { WriteException("LOADER PROFILE SWITCH ERROR", ex); }
         }
 
         private void LoaderUiFix_ButtonClicked(object sender, RoutedEventArgs e)
         {
-            if (e.OriginalSource is not Button button ||
-                !string.Equals(button.Content?.ToString(), "Save Profile Settings", StringComparison.OrdinalIgnoreCase))
-                return;
-
+            if (e.OriginalSource is not Button button || !string.Equals(button.Content?.ToString(), "Save Profile Settings", StringComparison.OrdinalIgnoreCase)) return;
             Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
         }
 
@@ -205,71 +141,40 @@ namespace TopuLauncher
             {
                 RuntimeProfileSettings settings = GetRuntimeProfile();
                 string loader = settings.Loader;
+                if (!IsKnownLoaderName(loader)) loader = "Vanilla";
 
-                if (!loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) &&
-                    !loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) &&
-                    !loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) &&
-                    !loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase) &&
-                    !loader.Equals("Quilt", StringComparison.OrdinalIgnoreCase))
-                {
-                    loader = "Vanilla";
-                }
-
-                string version = string.IsNullOrWhiteSpace(settings.Version)
-                    ? "1.21.1"
-                    : settings.Version;
-
+                string version = string.IsNullOrWhiteSpace(settings.Version) ? "1.21.1" : settings.Version;
                 int ram = Math.Clamp(settings.RamGb, 2, 12);
 
-                // Keep the actual loader selector synchronized with the profile.
-                // The original runtime code predates NeoForge and falls back to
-                // Vanilla for unknown loaders, so this explicitly restores it.
-                if (_loaderBox != null && !Equals(_loaderBox.SelectedItem?.ToString(), loader))
+                if (_loaderBox != null && !string.Equals(_loaderBox.SelectedItem?.ToString(), loader, StringComparison.OrdinalIgnoreCase))
                     _loaderBox.SelectedItem = loader;
 
-                // NeoForge has its own version list; the old runtime switch falls
-                // through to Fabric for unknown loaders, so override it here.
                 if (loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase))
                 {
                     VersionBox.Items.Clear();
                     foreach (string item in NeoForgeUiVersions)
                         VersionBox.Items.Add(new ComboBoxItem { Content = item });
-
                     int selected = Array.IndexOf(NeoForgeUiVersions, version);
                     VersionBox.SelectedIndex = selected >= 0 ? selected : 0;
                 }
 
-                if (LaunchVersionLabel != null)
-                    LaunchVersionLabel.Text = version;
-
-                if (LaunchRamLabel != null)
-                    LaunchRamLabel.Text = $"{ram}GB RAM";
-
+                if (LaunchVersionLabel != null) LaunchVersionLabel.Text = version;
+                if (LaunchRamLabel != null) LaunchRamLabel.Text = $"{ram}GB RAM";
                 if (LaunchBtn != null)
                 {
                     LaunchBtn.Content = $"⚡   LAUNCH {loader.ToUpperInvariant()}";
                     LaunchBtn.ToolTip = $"Launch {loader} {version} with {ram}GB RAM";
                 }
+                if (LaunchProfileLabel != null) LaunchProfileLabel.Text = GetActiveProfileName();
 
-                if (LaunchProfileLabel != null)
-                    LaunchProfileLabel.Text = GetActiveProfileName();
-
-                // The original XAML has a hard-coded Fabric TextBlock in the
-                // active-profile card. Replace only the loader text.
                 if (LaunchProfileLabel?.Parent is StackPanel profilePanel)
                 {
                     foreach (UIElement child in profilePanel.Children)
                     {
-                        if (child is not StackPanel details)
-                            continue;
-
+                        if (child is not StackPanel details) continue;
                         foreach (UIElement detail in details.Children)
                         {
-                            if (detail is TextBlock text &&
-                                text != LaunchVersionLabel &&
-                                text != LaunchRamLabel &&
-                                text.Text != "  •  " &&
-                                IsKnownLoaderName(text.Text))
+                            if (detail is TextBlock text && text != LaunchVersionLabel && text != LaunchRamLabel && text.Text != "  •  " && IsKnownLoaderName(text.Text))
                             {
                                 text.Text = loader;
                                 break;
@@ -283,36 +188,30 @@ namespace TopuLauncher
 
                 SetSidebarLoaderText(loader);
             }
-            catch (Exception ex)
-            {
-                WriteException("LOADER UI UPDATE ERROR", ex);
-            }
+            catch (Exception ex) { WriteException("LOADER UI UPDATE ERROR", ex); }
         }
 
         private static bool IsKnownLoaderName(string? value)
         {
-            return value != null &&
-                   (value.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) ||
-                    value.Equals("Fabric", StringComparison.OrdinalIgnoreCase) ||
-                    value.Equals("Forge", StringComparison.OrdinalIgnoreCase) ||
-                    value.Equals("NeoForge", StringComparison.OrdinalIgnoreCase) ||
-                    value.Equals("Quilt", StringComparison.OrdinalIgnoreCase));
+            return value != null && (value.Equals("Vanilla", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("Fabric", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("Forge", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("Quilt", StringComparison.OrdinalIgnoreCase));
         }
 
         private void SetSidebarLoaderText(string loader)
         {
             foreach (TextBlock text in FindTextBlocks(this))
             {
-                if (text.Text.Equals("Fabric PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    text.Text.Equals("Multi-Loader Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    text.Text.Equals("Forge PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    text.Text.Equals("NeoForge PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    text.Text.Equals("Quilt PvP Launcher", StringComparison.OrdinalIgnoreCase) ||
-                    text.Text.Equals("Vanilla PvP Launcher", StringComparison.OrdinalIgnoreCase))
+                if (text.Text.Equals("Fabric PvP Launcher", StringComparison.OrdinalIgnoreCase)
+                    || text.Text.Equals("Multi-Loader Launcher", StringComparison.OrdinalIgnoreCase)
+                    || text.Text.Equals("Forge PvP Launcher", StringComparison.OrdinalIgnoreCase)
+                    || text.Text.Equals("NeoForge PvP Launcher", StringComparison.OrdinalIgnoreCase)
+                    || text.Text.Equals("Quilt PvP Launcher", StringComparison.OrdinalIgnoreCase)
+                    || text.Text.Equals("Vanilla PvP Launcher", StringComparison.OrdinalIgnoreCase))
                 {
-                    text.Text = loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase)
-                        ? "Vanilla Minecraft"
-                        : $"{loader} PvP Launcher";
+                    text.Text = loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) ? "Vanilla Minecraft" : $"{loader} PvP Launcher";
                     return;
                 }
             }
@@ -324,12 +223,8 @@ namespace TopuLauncher
             for (int i = 0; i < count; i++)
             {
                 DependencyObject child = VisualTreeHelper.GetChild(root, i);
-
-                if (child is TextBlock text)
-                    yield return text;
-
-                foreach (TextBlock nested in FindTextBlocks(child))
-                    yield return nested;
+                if (child is TextBlock text) yield return text;
+                foreach (TextBlock nested in FindTextBlocks(child)) yield return nested;
             }
         }
     }
