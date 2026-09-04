@@ -101,7 +101,7 @@ namespace TopuLauncher
 
         private static void HookCreateProfileVersionSelector(Window window)
         {
-            ComboBox[] boxes = FindVisualChildren<ComboBox>(window).ToArray();
+            ComboBox[] boxes = FindVanillaVisualChildren<ComboBox>(window).ToArray();
             if (boxes.Length < 2) return;
 
             ComboBox? loaderBox = boxes.FirstOrDefault(b =>
@@ -158,7 +158,9 @@ namespace TopuLauncher
             }
         }
 
-        private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+        // Named separately because another MainWindow partial already provides
+        // a generic FindVisualChildren<T> helper.
+        private static IEnumerable<T> FindVanillaVisualChildren<T>(DependencyObject root) where T : DependencyObject
         {
             if (root == null) yield break;
 
@@ -166,7 +168,7 @@ namespace TopuLauncher
             {
                 DependencyObject child = VisualTreeHelper.GetChild(root, i);
                 if (child is T match) yield return match;
-                foreach (T descendant in FindVisualChildren<T>(child)) yield return descendant;
+                foreach (T descendant in FindVanillaVisualChildren<T>(child)) yield return descendant;
             }
         }
     }
