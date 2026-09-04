@@ -136,8 +136,7 @@ namespace TopuLauncher
         private void LaunchPreview(object sender, MouseButtonEventArgs e)
         {
             string loader = GetRuntimeProfile().Loader;
-            if (loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase)) return;
-            if (loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) return;
+            if (loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) || loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) return;
             e.Handled = true;
             _ = LaunchNonFabricProfileAsync();
         }
@@ -304,4 +303,30 @@ namespace TopuLauncher
                 else if(loaderType.Equals("Quilt",StringComparison.OrdinalIgnoreCase)) loaderVersionName=await InstallQuiltRuntimeAsync(minecraftVersion);
                 else loaderVersionName=minecraftVersion;
 
-                MLaunchOption options=new MLaunchOption {... (truncated)
+                MLaunchOption options=new MLaunchOption { Session=_session, MaximumRamMb=ram, MinimumRamMb=Math.Min(1024,ram), JavaPath=javaPath, GameLauncherName="Topu Client", GameLauncherVersion="1.0.0" };
+                StatusText.Text=$"Building {loaderType} process..."; Process process=await launcher.BuildProcessAsync(loaderVersionName,options,CancellationToken.None); if(process==null) throw new InvalidOperationException("CmlLib returned a null Minecraft process.");
+                process.StartInfo.RedirectStandardOutput=true; process.StartInfo.RedirectStandardError=true; process.StartInfo.UseShellExecute=false; process.StartInfo.CreateNoWindow=true; process.OutputDataReceived+=Minecraft_OutputDataReceived; process.ErrorDataReceived+=Minecraft_ErrorDataReceived;
+                WriteLog($"Loader version: {loaderVersionName}"); WriteLog($"Executable: {process.StartInfo.FileName}"); WriteLog($"Arguments: {process.StartInfo.Arguments}"); WriteLog($"Working directory: {process.StartInfo.WorkingDirectory}"); WriteDebugFile(process,javaPath,minecraftVersion,loaderVersionName,ram);
+                StatusText.Text=$"Starting {loaderType} {minecraftVersion}..."; if(!process.Start()) throw new InvalidOperationException("Windows failed to start Minecraft.");
+                _minecraftProcess=process; process.BeginOutputReadLine(); process.BeginErrorReadLine(); StatusText.Text=$"Topu Client running as {_session.Username}"; _=MonitorMinecraftAsync(process);
+            }
+            catch(Exception ex){ StatusText.Text="Launch failed."; WriteException("TOPU MULTI-LOADER LAUNCH ERROR",ex); MessageBox.Show("Minecraft failed to launch.\n\n"+ex.Message+"\n\nLog:\n"+_logPath,"Topu Client",MessageBoxButton.OK,MessageBoxImage.Error); }
+            finally{ LaunchBtn.IsEnabled=true; }
+        }
+
+        private async Task<string> InstallQuiltRuntimeAsync(string minecraftVersion)
+        {
+            string versionsUrl="https://meta.quiltmc.org/v3/versions/loader/"+Uri.EscapeDataString(minecraftVersion); using HttpResponseMessage versionsResponse=await Http.GetAsync(versionsUrl); versionsResponse.EnsureSuccessStatusCode(); string versionsJson=await versionsResponse.Content.ReadAsStringAsync(); using JsonDocument versionsDoc=JsonDocument.Parse(versionsJson); JsonElement root=versionsDoc.RootElement; if(root.ValueKind!=JsonValueKind.Array||root.GetArrayLength()==0) throw new InvalidOperationException($"No Quilt Loader version was found for Minecraft {minecraftVersion}."); JsonElement selected=root[0]; string loaderVersion=selected.GetProperty("loader").GetProperty("version").GetString()??throw new InvalidOperationException("Quilt Loader version was missing.");
+            string profileUrl="https://meta.quiltmc.org/v3/versions/loader/"+Uri.EscapeDataString(minecraftVersion)+"/"+Uri.EscapeDataString(loaderVersion)+"/profile/json"; using HttpResponseMessage profileResponse=await Http.GetAsync(profileUrl); profileResponse.EnsureSuccessStatusCode(); string profileJson=await profileResponse.Content.ReadAsStringAsync(); using JsonDocument profileDoc=JsonDocument.Parse(profileJson); string id=profileDoc.RootElement.TryGetProperty("id",out JsonElement idElement)?idElement.GetString()??$"quilt-loader-{loaderVersion}-{minecraftVersion}":$"quilt-loader-{loaderVersion}-{minecraftVersion}";
+            using(JsonDocument sourceDoc=JsonDocument.Parse(profileJson)){ Dictionary<string,JsonElement> profile=new Dictionary<string,JsonElement>(); foreach(JsonProperty property in sourceDoc.RootElement.EnumerateObject()) profile[property.Name]=property.Value.Clone(); profile["inheritsFrom"]=JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone(); profile["jar"]=JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone(); profileJson=JsonSerializer.Serialize(profile,new JsonSerializerOptions{WriteIndented=true}); }
+            string versionDirectory=Path.Combine(_gamePath,"versions",id); Directory.CreateDirectory(versionDirectory); string jsonPath=Path.Combine(versionDirectory,id+".json"); await File.WriteAllTextAsync(jsonPath,profileJson);
+            if(profileDoc.RootElement.TryGetProperty("libraries",out JsonElement libraries)&&libraries.ValueKind==JsonValueKind.Array){foreach(JsonElement library in libraries.EnumerateArray()){if(!library.TryGetProperty("name",out JsonElement nameElement))continue; string coordinate=nameElement.GetString()??""; string? url=null; if(library.TryGetProperty("downloads",out JsonElement downloads)&&downloads.TryGetProperty("artifact",out JsonElement artifact)&&artifact.TryGetProperty("url",out JsonElement directUrl))url=directUrl.GetString(); string relative=MavenRelativePath(coordinate); if(string.IsNullOrWhiteSpace(url)){string baseUrl=library.TryGetProperty("url",out JsonElement baseElement)?baseElement.GetString()??"https://maven.quiltmc.org/repository/release/":"https://maven.quiltmc.org/repository/release/"; url=baseUrl.TrimEnd('/')+"/"+relative.Replace('\\','/');} string destination=Path.Combine(_gamePath,"libraries",relative); if(!File.Exists(destination)||new FileInfo(destination).Length==0)await DownloadFileAsync(url,destination);}}
+            WriteLog($"Quilt installed: {id}"); WriteLog($"Quilt game inheritance: {minecraftVersion}"); WriteLog($"Quilt CmlLib jar mapping: {minecraftVersion}"); return id;
+        }
+
+        private static string MavenRelativePath(string coordinate)
+        {
+            string[] parts=coordinate.Split(':'); if(parts.Length<3)throw new InvalidOperationException("Invalid Maven coordinate: "+coordinate); return Path.Combine(parts[0].Replace('.',Path.DirectorySeparatorChar),parts[1],parts[2],parts[1]+"-"+parts[2]+".jar");
+        }
+    }
+}
