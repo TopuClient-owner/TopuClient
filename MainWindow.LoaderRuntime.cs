@@ -37,6 +37,11 @@ namespace TopuLauncher
             "1.20.6", "1.21"
         };
 
+        private static readonly string[] RuntimeNeoForgeVersions =
+        {
+            "1.21.1", "1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2"
+        };
+
         private ComboBox? _loaderBox;
         private bool _runtimeUiReady;
 
@@ -83,6 +88,7 @@ namespace TopuLauncher
             _loaderBox.Items.Add("Fabric");
             _loaderBox.Items.Add("Forge");
             _loaderBox.Items.Add("Quilt");
+            _loaderBox.Items.Add("NeoForge");
             _loaderBox.SelectionChanged += LoaderBox_SelectionChanged;
 
             Border card = new Border
@@ -131,6 +137,7 @@ namespace TopuLauncher
         {
             string loader = GetRuntimeProfile().Loader;
             if (loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase)) return;
+            if (loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) return;
             e.Handled = true;
             _ = LaunchNonFabricProfileAsync();
         }
@@ -148,6 +155,7 @@ namespace TopuLauncher
                 "Vanilla" => RuntimeVanillaVersions,
                 "Forge" => RuntimeForgeVersions,
                 "Quilt" => RuntimeQuiltVersions,
+                "NeoForge" => RuntimeNeoForgeVersions,
                 _ => RuntimeFabricVersions
             };
             string current = preferred ?? GetSelectedVersion();
@@ -195,7 +203,7 @@ namespace TopuLauncher
             if (_loaderBox == null) return;
             RuntimeProfileSettings settings = GetRuntimeProfile();
             string loader = settings.Loader;
-            if (!loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Quilt", StringComparison.OrdinalIgnoreCase)) loader = "Vanilla";
+            if (!loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Quilt", StringComparison.OrdinalIgnoreCase) && !loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) loader = "Vanilla";
             _loaderBox.SelectedItem = loader;
             SetVersionChoices(loader, settings.Version);
             int ram = Math.Clamp(settings.RamGb, 2, 12);
@@ -211,7 +219,7 @@ namespace TopuLauncher
             for (int i = 0; i < 6; i++) root.RowDefinitions.Add(new RowDefinition { Height = i == 4 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             TextBlock title = new TextBlock { Text = "Create New Profile", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = Brushes.White, Margin = new Thickness(0,0,0,18) }; Grid.SetRow(title,0); root.Children.Add(title);
             TextBox nameBox = new TextBox { Height = 36, Padding = new Thickness(10,6,10,6), Text = "pvp" }; AddDialogField(root,1,"Profile name",nameBox);
-            ComboBox loaderBox = new ComboBox { Height = 36, ItemsSource = new[] { "Vanilla", "Fabric", "Forge", "Quilt" }, SelectedIndex = 0 }; AddDialogField(root,2,"Loader",loaderBox);
+            ComboBox loaderBox = new ComboBox { Height = 36, ItemsSource = new[] { "Vanilla", "Fabric", "Forge", "Quilt", "NeoForge" }, SelectedIndex = 0 }; AddDialogField(root,2,"Loader",loaderBox);
             ComboBox versionBox = new ComboBox { Height = 36, ItemsSource = RuntimeVanillaVersions, SelectedIndex = 0 }; AddDialogField(root,3,"Minecraft version",versionBox);
             Slider ram = new Slider { Minimum = 2, Maximum = 12, Value = 4, TickFrequency = 1, IsSnapToTickEnabled = true };
             TextBlock ramValue = new TextBlock { Text = "4GB", Foreground = (Brush)FindResource("TopuGreen"), FontWeight = FontWeights.Bold, Margin = new Thickness(10,0,0,0) };
@@ -220,7 +228,7 @@ namespace TopuLauncher
             loaderBox.SelectionChanged += (_, _) =>
             {
                 string loader = loaderBox.SelectedItem?.ToString() ?? "Vanilla";
-                string[] choices = loader switch { "Vanilla" => RuntimeVanillaVersions, "Forge" => RuntimeForgeVersions, "Quilt" => RuntimeQuiltVersions, _ => RuntimeFabricVersions };
+                string[] choices = loader switch { "Vanilla" => RuntimeVanillaVersions, "Forge" => RuntimeForgeVersions, "Quilt" => RuntimeQuiltVersions, "NeoForge" => RuntimeNeoForgeVersions, _ => RuntimeFabricVersions };
                 versionBox.ItemsSource = choices; versionBox.SelectedIndex = 0;
             };
             StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
@@ -296,30 +304,4 @@ namespace TopuLauncher
                 else if(loaderType.Equals("Quilt",StringComparison.OrdinalIgnoreCase)) loaderVersionName=await InstallQuiltRuntimeAsync(minecraftVersion);
                 else loaderVersionName=minecraftVersion;
 
-                MLaunchOption options=new MLaunchOption { Session=_session, MaximumRamMb=ram, MinimumRamMb=Math.Min(1024,ram), JavaPath=javaPath, GameLauncherName="Topu Client", GameLauncherVersion="1.0.0" };
-                StatusText.Text=$"Building {loaderType} process..."; Process process=await launcher.BuildProcessAsync(loaderVersionName,options,CancellationToken.None); if(process==null) throw new InvalidOperationException("CmlLib returned a null Minecraft process.");
-                process.StartInfo.RedirectStandardOutput=true; process.StartInfo.RedirectStandardError=true; process.StartInfo.UseShellExecute=false; process.StartInfo.CreateNoWindow=true; process.OutputDataReceived+=Minecraft_OutputDataReceived; process.ErrorDataReceived+=Minecraft_ErrorDataReceived;
-                WriteLog($"Loader version: {loaderVersionName}"); WriteLog($"Executable: {process.StartInfo.FileName}"); WriteLog($"Arguments: {process.StartInfo.Arguments}"); WriteLog($"Working directory: {process.StartInfo.WorkingDirectory}"); WriteDebugFile(process,javaPath,minecraftVersion,loaderVersionName,ram);
-                StatusText.Text=$"Starting {loaderType} {minecraftVersion}..."; if(!process.Start()) throw new InvalidOperationException("Windows failed to start Minecraft.");
-                _minecraftProcess=process; process.BeginOutputReadLine(); process.BeginErrorReadLine(); StatusText.Text=$"Topu Client running as {_session.Username}"; _=MonitorMinecraftAsync(process);
-            }
-            catch(Exception ex){ StatusText.Text="Launch failed."; WriteException("TOPU MULTI-LOADER LAUNCH ERROR",ex); MessageBox.Show("Minecraft failed to launch.\n\n"+ex.Message+"\n\nLog:\n"+_logPath,"Topu Client",MessageBoxButton.OK,MessageBoxImage.Error); }
-            finally{ LaunchBtn.IsEnabled=true; }
-        }
-
-        private async Task<string> InstallQuiltRuntimeAsync(string minecraftVersion)
-        {
-            string versionsUrl="https://meta.quiltmc.org/v3/versions/loader/"+Uri.EscapeDataString(minecraftVersion); using HttpResponseMessage versionsResponse=await Http.GetAsync(versionsUrl); versionsResponse.EnsureSuccessStatusCode(); string versionsJson=await versionsResponse.Content.ReadAsStringAsync(); using JsonDocument versionsDoc=JsonDocument.Parse(versionsJson); JsonElement root=versionsDoc.RootElement; if(root.ValueKind!=JsonValueKind.Array||root.GetArrayLength()==0) throw new InvalidOperationException($"No Quilt Loader version was found for Minecraft {minecraftVersion}."); JsonElement selected=root[0]; string loaderVersion=selected.GetProperty("loader").GetProperty("version").GetString()??throw new InvalidOperationException("Quilt Loader version was missing.");
-            string profileUrl="https://meta.quiltmc.org/v3/versions/loader/"+Uri.EscapeDataString(minecraftVersion)+"/"+Uri.EscapeDataString(loaderVersion)+"/profile/json"; using HttpResponseMessage profileResponse=await Http.GetAsync(profileUrl); profileResponse.EnsureSuccessStatusCode(); string profileJson=await profileResponse.Content.ReadAsStringAsync(); using JsonDocument profileDoc=JsonDocument.Parse(profileJson); string id=profileDoc.RootElement.TryGetProperty("id",out JsonElement idElement)?idElement.GetString()??$"quilt-loader-{loaderVersion}-{minecraftVersion}":$"quilt-loader-{loaderVersion}-{minecraftVersion}";
-            using(JsonDocument sourceDoc=JsonDocument.Parse(profileJson)){ Dictionary<string,JsonElement> profile=new Dictionary<string,JsonElement>(); foreach(JsonProperty property in sourceDoc.RootElement.EnumerateObject()) profile[property.Name]=property.Value.Clone(); profile["inheritsFrom"]=JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone(); profile["jar"]=JsonDocument.Parse(JsonSerializer.Serialize(minecraftVersion)).RootElement.Clone(); profileJson=JsonSerializer.Serialize(profile,new JsonSerializerOptions{WriteIndented=true}); }
-            string versionDirectory=Path.Combine(_gamePath,"versions",id); Directory.CreateDirectory(versionDirectory); string jsonPath=Path.Combine(versionDirectory,id+".json"); await File.WriteAllTextAsync(jsonPath,profileJson);
-            if(profileDoc.RootElement.TryGetProperty("libraries",out JsonElement libraries)&&libraries.ValueKind==JsonValueKind.Array){foreach(JsonElement library in libraries.EnumerateArray()){if(!library.TryGetProperty("name",out JsonElement nameElement))continue; string coordinate=nameElement.GetString()??""; string? url=null; if(library.TryGetProperty("downloads",out JsonElement downloads)&&downloads.TryGetProperty("artifact",out JsonElement artifact)&&artifact.TryGetProperty("url",out JsonElement directUrl))url=directUrl.GetString(); string relative=MavenRelativePath(coordinate); if(string.IsNullOrWhiteSpace(url)){string baseUrl=library.TryGetProperty("url",out JsonElement baseElement)?baseElement.GetString()??"https://maven.quiltmc.org/repository/release/":"https://maven.quiltmc.org/repository/release/"; url=baseUrl.TrimEnd('/')+"/"+relative.Replace('\\','/');} string destination=Path.Combine(_gamePath,"libraries",relative); if(!File.Exists(destination)||new FileInfo(destination).Length==0)await DownloadFileAsync(url,destination);}}
-            WriteLog($"Quilt installed: {id}"); WriteLog($"Quilt game inheritance: {minecraftVersion}"); WriteLog($"Quilt CmlLib jar mapping: {minecraftVersion}"); return id;
-        }
-
-        private static string MavenRelativePath(string coordinate)
-        {
-            string[] parts=coordinate.Split(':'); if(parts.Length<3)throw new InvalidOperationException("Invalid Maven coordinate: "+coordinate); return Path.Combine(parts[0].Replace('.',Path.DirectorySeparatorChar),parts[1],parts[2],parts[1]+"-"+parts[2]+".jar");
-        }
-    }
-}
+                MLaunchOption options=new MLaunchOption {... (truncated)
