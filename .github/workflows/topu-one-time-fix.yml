@@ -1,0 +1,52 @@
+name: Topu one-time source fix
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Java detection and Modrinth UI
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('MainWindow.xaml.cs')
+          s = p.read_text(encoding='utf-8')
+          old = '''            return combined.Contains(\n                $"version \\\"{requiredMajor}.",\n                StringComparison.OrdinalIgnoreCase);'''
+          new = '''            Match versionMatch = System.Text.RegularExpressions.Regex.Match(\n                combined,\n                @"version\\s+\\\"([^\\\"]+)\\\"",\n                System.Text.RegularExpressions.RegexOptions.IgnoreCase);\n\n            if (!versionMatch.Success)\n                return false;\n\n            string detectedVersion = versionMatch.Groups[1].Value.Trim();\n\n            // Java 8 uses the legacy 1.8.x version format.\n            if (requiredMajor == 8)\n                return detectedVersion.StartsWith(\"1.8.\", StringComparison.OrdinalIgnoreCase);\n\n            string majorText = detectedVersion.StartsWith(\"1.\", StringComparison.OrdinalIgnoreCase)\n                ? detectedVersion.Substring(2).Split('.')[0]\n                : detectedVersion.Split('.')[0];\n\n            return int.TryParse(majorText, out int detectedMajor) &&\n                   detectedMajor == requiredMajor;'''
+          if old not in s:
+              raise SystemExit('Java detection block not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+
+          p = Path('TopuModrinthManager.cs')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('''            EventManager.RegisterClassHandler(typeof(Button), Button.ClickEvent, new RoutedEventHandler(ModrinthManagerButtonClick), true);\n            return new object();''', '''            EventManager.RegisterClassHandler(typeof(Button), Button.ClickEvent, new RoutedEventHandler(ModrinthManagerButtonClick), true);\n            EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent, new RoutedEventHandler(AddModrinthEntryButtons));\n            return new object();''', 1)
+          s = s.replace('''            if (!string.Equals(button.Content?.ToString(), "Search & Add", StringComparison.OrdinalIgnoreCase)) return;\n            if (Window.GetWindow(button) is MainWindow window)\n            {\n                e.Handled = true;\n                window.OpenModrinthManager();\n            }''', '''            string content = button.Content?.ToString() ?? "";\n            if (!content.Equals("Search & Add", StringComparison.OrdinalIgnoreCase) &&\n                !content.Equals("Add Mods", StringComparison.OrdinalIgnoreCase) &&\n                !content.Equals("Add Modpacks", StringComparison.OrdinalIgnoreCase)) return;\n            if (Window.GetWindow(button) is MainWindow window)\n            {\n                e.Handled = true;\n                window.OpenModrinthManager(content.Equals("Add Modpacks", StringComparison.OrdinalIgnoreCase) ? "Modpacks" : "Mods");\n            }''', 1)
+          s = s.replace('''        private void OpenModrinthManager()\n        {\n            ModrinthBrowserWindow window = new ModrinthBrowserWindow(this)\n            {''', '''        private void OpenModrinthManager(string mode = "Mods")\n        {\n            ModrinthBrowserWindow window = new ModrinthBrowserWindow(this, mode)\n            {''', 1)
+          s = s.replace('''            private readonly TextBlock _status;\n\n            public ModrinthBrowserWindow(MainWindow launcher)''', '''            private readonly TextBlock _status;\n\n            public ModrinthBrowserWindow(MainWindow launcher, string initialType = "Mods")''', 1)
+          s = s.replace('''                _type.Items.Add("All");\n                _type.SelectedIndex = 0;''', '''                _type.Items.Add("All");\n                _type.SelectedIndex = initialType.Equals("Modpacks", StringComparison.OrdinalIgnoreCase) ? 1 : 0;''', 1)
+
+          marker = '''        private sealed class ModrinthProject'''
+          method = '''        private static void AddModrinthEntryButtons(object sender, RoutedEventArgs e)\n        {\n            if (sender is not MainWindow window) return;\n\n            Button? original = FindButtonByText(window, "Search & Add");\n            if (original == null || original.Tag?.ToString() == "TopuModrinthEntries") return;\n\n            original.Content = "Add Mods";\n            original.Tag = "TopuModrinthEntries";\n\n            if (original.Parent is Panel parent)\n            {\n                int index = parent.Children.IndexOf(original);\n                Button modpacks = new Button\n                {\n                    Content = "Add Modpacks",\n                    Height = original.Height,\n                    Margin = new Thickness(8, 0, 0, 0),\n                    Style = window.FindResource("ModernButton") as Style,\n                    Tag = "TopuModrinthEntries"\n                };\n                modpacks.Click += (_, args) => window.OpenModrinthManager("Modpacks");\n                parent.Children.Insert(Math.Min(index + 1, parent.Children.Count), modpacks);\n            }\n        }\n\n        private static Button? FindButtonByText(DependencyObject root, string text)\n        {\n            foreach (object child in LogicalTreeHelper.GetChildren(root))\n            {\n                if (child is Button button && string.Equals(button.Content?.ToString(), text, StringComparison.OrdinalIgnoreCase)) return button;\n                if (child is DependencyObject dependency)\n                {\n                    Button? found = FindButtonByText(dependency, text);\n                    if (found != null) return found;\n                }\n            }\n            return null;\n        }\n\n'''
+          if marker not in s:
+              raise SystemExit('Modrinth marker not found')
+          s = s.replace(marker, method + marker, 1)
+          p.write_text(s, encoding='utf-8')
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MainWindow.xaml.cs TopuModrinthManager.cs
+          git diff --cached --quiet && exit 0
+          git commit -m "fix Java 8 runtime detection and add Modrinth entry buttons"
+          git push
