@@ -10,11 +10,6 @@ namespace TopuLauncher
 {
     public partial class MainWindow
     {
-        private static readonly string[] RuntimeNeoForgeVersions =
-        {
-            "1.21.1", "1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2"
-        };
-
         private static readonly object RuntimeProfileHardFixRegistration = RegisterRuntimeProfileHardFix();
         private bool _runtimeProfileHardFixReady;
         private bool _runtimeProfileHardFixSyncing;
