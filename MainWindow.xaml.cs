@@ -3353,9 +3353,26 @@ private static readonly HttpClient Http = CreateHttpClient();
             WriteLog(
                 $"Java version check [{javaPath}]: {combined.Trim()}");
 
-            return combined.Contains(
-                $"version \"{requiredMajor}.",
-                StringComparison.OrdinalIgnoreCase);
+            Match versionMatch = System.Text.RegularExpressions.Regex.Match(
+                combined,
+                @"version\s+\"([^\"]+)\"",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (!versionMatch.Success)
+                return false;
+
+            string detectedVersion = versionMatch.Groups[1].Value.Trim();
+
+            // Java 8 uses the legacy 1.8.x version format.
+            if (requiredMajor == 8)
+                return detectedVersion.StartsWith("1.8.", StringComparison.OrdinalIgnoreCase);
+
+            string majorText = detectedVersion.StartsWith("1.", StringComparison.OrdinalIgnoreCase)
+                ? detectedVersion.Substring(2).Split('.')[0]
+                : detectedVersion.Split('.')[0];
+
+            return int.TryParse(majorText, out int detectedMajor) &&
+                   detectedMajor == requiredMajor;
         }
         catch (Exception ex)
         {
