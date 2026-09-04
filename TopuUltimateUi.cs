@@ -143,8 +143,8 @@ namespace TopuLauncher
             {
                 Page("Overview", "Your Topu Client instance, mods and performance in one place.");
                 var g = new Grid();
-                for (int i = 0; i < 2; i++) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                for (int i = 0; i < 3; i++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                for (int rowIndex = 0; rowIndex < 2; rowIndex++) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                for (int columnIndex = 0; columnIndex < 3; columnIndex++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 AddCard(g, "PROFILE", "default", Summary(), 0, 0);
                 AddCard(g, "MINECRAFT", Version(), "Active runtime version", 0, 1);
                 AddCard(g, "MODS", Directory.Exists(Path.Combine(_launcher._gamePath, "mods")) ? Directory.GetFiles(Path.Combine(_launcher._gamePath, "mods"), "*.jar").Length.ToString() : "0", "JAR files installed", 0, 2);
@@ -152,7 +152,7 @@ namespace TopuLauncher
                 hs.Children.Add(new TextBlock { Text = "TOPU PERFORMANCE CENTER", Foreground = B("#00FF88"), FontWeight = FontWeights.Bold, FontSize = 10 });
                 hs.Children.Add(new TextBlock { Text = "Ready for high-FPS Minecraft.", FontSize = 24, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 6, 0, 0) });
                 hs.Children.Add(new TextBlock { Text = "Manage your mods, modpacks and instance without touching your existing launch configuration.", Foreground = B("#858C97"), FontSize = 10, Margin = new Thickness(0, 6, 0, 16) });
-                var row = new StackPanel { Orientation = Orientation.Horizontal }; var m = Btn("Browse Mods", true); m.Click += (_, _) => { _type.SelectedItem = "Mods"; Page("Discover Mods", "Find compatible mods for the active profile."); _ = SearchAsync(); }; var i = Btn("Installed Mods", false); i.Margin = new Thickness(8, 0, 0, 0); i.Click += (_, _) => Installed(); row.Children.Add(m); row.Children.Add(i); hs.Children.Add(row); hero.Child = hs;
+                var row = new StackPanel { Orientation = Orientation.Horizontal }; var m = Btn("Browse Mods", true); m.Click += (_, _) => { _type.SelectedItem = "Mods"; Page("Discover Mods", "Find compatible mods for the active profile."); _ = SearchAsync(); }; var installedButton = Btn("Installed Mods", false); installedButton.Margin = new Thickness(8, 0, 0, 0); installedButton.Click += (_, _) => Installed(); row.Children.Add(m); row.Children.Add(installedButton); hs.Children.Add(row); hero.Child = hs;
                 Grid.SetRow(hero, 1); Grid.SetColumnSpan(hero, 3); g.Children.Add(hero); _body.Children.Add(g); _status.Text = "Overview • " + Summary();
             }
 
@@ -255,9 +255,9 @@ namespace TopuLauncher
                 Page("Profiles", "Active profile information from the same runtime system used by the launcher."); var p = Panel(); var s = new StackPanel(); s.Children.Add(new TextBlock { Text = "DEFAULT", Foreground = B("#626974"), FontSize = 9, FontWeight = FontWeights.Bold }); s.Children.Add(new TextBlock { Text = "default", FontSize = 23, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 5, 0, 0) }); s.Children.Add(new TextBlock { Text = Summary(), Foreground = B("#00FF88"), FontSize = 11, Margin = new Thickness(0, 4, 0, 0) }); s.Children.Add(new TextBlock { Text = "The existing profile editor remains responsible for saving version and RAM changes. This center reads the active values and will not replace that logic.", Foreground = B("#858C97"), FontSize = 10, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) }); p.Child = s; _body.Children.Add(p);
             }
 
-            private string Summary() { try { var p = GetRuntimeProfile(); return $"{p.Loader} • {p.Version} • {p.RamGb}GB RAM"; } catch { return "Topu runtime"; } }
-            private string Version() { try { return GetRuntimeProfile().Version ?? "1.21.1"; } catch { return "1.21.1"; } }
-            private string Loader() { try { return GetRuntimeProfile().Loader ?? "Fabric"; } catch { return "Fabric"; } }
+            private string Summary() { try { var p = _launcher.GetRuntimeProfile(); return $"{p.Loader} • {p.Version} • {p.RamGb}GB RAM"; } catch { return "Topu runtime"; } }
+            private string Version() { try { return _launcher.GetRuntimeProfile().Version ?? "1.21.1"; } catch { return "1.21.1"; } }
+            private string Loader() { try { return _launcher.GetRuntimeProfile().Loader ?? "Fabric"; } catch { return "Fabric"; } }
             private static string Get(JsonElement e, string k) => e.TryGetProperty(k, out var p) ? p.GetString() ?? "" : "";
             private static string Sanitize(string n) { foreach (char c in Path.GetInvalidFileNameChars()) n = n.Replace(c, '_'); return n; }
         }
