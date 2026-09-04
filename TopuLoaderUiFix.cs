@@ -27,9 +27,6 @@ namespace TopuLauncher
                 FrameworkElement.LoadedEvent,
                 new RoutedEventHandler(LoaderUiFixLoaded));
 
-            // The Create Profile dialog creates its ComboBoxes dynamically, so a
-            // class handler makes NeoForge available there too without replacing
-            // the existing dialog implementation.
             EventManager.RegisterClassHandler(
                 typeof(ComboBox),
                 FrameworkElement.LoadedEvent,
@@ -82,9 +79,6 @@ namespace TopuLauncher
             if (!selected.Equals("NeoForge", StringComparison.OrdinalIgnoreCase))
                 return;
 
-            // The original Create Profile dialog has its own SelectionChanged
-            // handler and would otherwise fall through to the Fabric versions.
-            // Run after it so the version list becomes NeoForge-specific.
             combo.Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
@@ -102,7 +96,7 @@ namespace TopuLauncher
                 }
                 catch
                 {
-                    // The normal runtime UI handles its own version population.
+                    // Runtime UI remains responsible for its normal controls.
                 }
             }));
         }
@@ -114,8 +108,7 @@ namespace TopuLauncher
                 if (child is not ComboBox combo || ReferenceEquals(combo, loaderCombo))
                     continue;
 
-                if (combo.ItemsSource != null &&
-                    combo.ItemsSource is IEnumerable<string> source &&
+                if (combo.ItemsSource is IEnumerable<string> source &&
                     source.Any(x => x.Equals("1.8.9", StringComparison.OrdinalIgnoreCase) ||
                                     x.Equals("1.21.1", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -171,21 +164,7 @@ namespace TopuLauncher
             if (!_runtimeUiReady || e.OriginalSource != _loaderBox)
                 return;
 
-            string loader = _loaderBox?.SelectedItem?.ToString() ?? "Vanilla";
-            if (loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase))
-            {
-                // RuntimeLoader's original handler runs first and defaults unknown
-                // loaders to Fabric. Override that result for NeoForge.
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    SetVersionChoices("NeoForge", GetSelectedVersion());
-                    ApplyLoaderUiFix();
-                }));
-            }
-            else
-            {
-                Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
-            }
+            Dispatcher.BeginInvoke(new Action(ApplyLoaderUiFix));
         }
 
         private void LoaderUiFix_ProfileChanged(object? sender, SelectionChangedEventArgs e)
@@ -199,10 +178,9 @@ namespace TopuLauncher
 
             try
             {
-                // IMPORTANT: switch _gamePath immediately, before any queued
-                // refresh reads topu-profile.json. This fixes the stale-profile
-                // bug where the previous profile's loader/version/RAM remained
-                // visible until the user changed the fields manually.
+                // Switch the active game path FIRST. The existing runtime handler
+                // queues its refresh, so this prevents the previous profile's
+                // loader/version/RAM from being read for one UI cycle.
                 SetActiveProfile(profile);
                 ApplyLoaderUiFix();
             }
@@ -243,6 +221,24 @@ namespace TopuLauncher
 
                 int ram = Math.Clamp(settings.RamGb, 2, 12);
 
+                // Keep the actual loader selector synchronized with the profile.
+                // The original runtime code predates NeoForge and falls back to
+                // Vanilla for unknown loaders, so this explicitly restores it.
+                if (_loaderBox != null && !Equals(_loaderBox.SelectedItem?.ToString(), loader))
+                    _loaderBox.SelectedItem = loader;
+
+                // NeoForge has its own version list; the old runtime switch falls
+                // through to Fabric for unknown loaders, so override it here.
+                if (loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase))
+                {
+                    VersionBox.Items.Clear();
+                    foreach (string item in NeoForgeUiVersions)
+                        VersionBox.Items.Add(new ComboBoxItem { Content = item });
+
+                    int selected = Array.IndexOf(NeoForgeUiVersions, version);
+                    VersionBox.SelectedIndex = selected >= 0 ? selected : 0;
+                }
+
                 if (LaunchVersionLabel != null)
                     LaunchVersionLabel.Text = version;
 
@@ -259,8 +255,7 @@ namespace TopuLauncher
                     LaunchProfileLabel.Text = GetActiveProfileName();
 
                 // The original XAML has a hard-coded Fabric TextBlock in the
-                // active-profile card. Replace only the loader text, leaving the
-                // visual layout untouched.
+                // active-profile card. Replace only the loader text.
                 if (LaunchProfileLabel?.Parent is StackPanel profilePanel)
                 {
                     foreach (UIElement child in profilePanel.Children)
