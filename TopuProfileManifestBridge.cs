@@ -16,6 +16,7 @@ namespace TopuLauncher
         private static readonly object ProfileManifestBridgeRegistration = RegisterProfileManifestBridge();
         private bool _profileManifestBridgeReady;
         private bool _profileManifestSyncing;
+        private bool _profileManifestLoaderHandlerAttached;
 
         private static object RegisterProfileManifestBridge()
         {
@@ -54,6 +55,7 @@ namespace TopuLauncher
                 if (ProfileSelector != null)
                     ProfileSelector.SelectionChanged += ProfileManifestProfileChanged;
 
+                EnsureProfileManifestLoaderHandler();
                 _profileManifestBridgeReady = true;
                 QueueProfileManifestSync();
             }
@@ -76,28 +78,28 @@ namespace TopuLauncher
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     Style = FindResource("Combo") as Style
                 };
-
-                _loaderBox.Items.Add("Vanilla");
-                _loaderBox.Items.Add("Fabric");
-                _loaderBox.Items.Add("Forge");
-                _loaderBox.Items.Add("Quilt");
-                _loaderBox.SelectionChanged += LoaderBox_SelectionChanged;
             }
-            else
+
+            string[] loaders = { "Vanilla", "Fabric", "Forge", "Quilt", "NeoForge" };
+            foreach (string loader in loaders)
             {
-                // The old runtime UI can create the control before failing to
-                // create its card if a visual-only resource is missing.
-                if (_loaderBox.Items.Count == 0)
+                bool exists = false;
+                foreach (object item in _loaderBox.Items)
                 {
-                    _loaderBox.Items.Add("Vanilla");
-                    _loaderBox.Items.Add("Fabric");
-                    _loaderBox.Items.Add("Forge");
-                    _loaderBox.Items.Add("Quilt");
+                    if (string.Equals(item?.ToString(), loader, StringComparison.OrdinalIgnoreCase))
+                    {
+                        exists = true;
+                        break;
+                    }
                 }
-
-                if (_loaderBox.Style == null)
-                    _loaderBox.Style = FindResource("Combo") as Style;
+                if (!exists)
+                    _loaderBox.Items.Add(loader);
             }
+
+            if (_loaderBox.Style == null)
+                _loaderBox.Style = FindResource("Combo") as Style;
+
+            EnsureProfileManifestLoaderHandler();
 
             if (!IsDescendantOf(_loaderBox, TabProfiles))
             {
@@ -132,6 +134,26 @@ namespace TopuLauncher
                 card.Child = stack;
                 TabProfiles.Children.Insert(Math.Min(2, TabProfiles.Children.Count), card);
             }
+        }
+
+        private void EnsureProfileManifestLoaderHandler()
+        {
+            if (_loaderBox == null || _profileManifestLoaderHandlerAttached)
+                return;
+
+            _loaderBox.SelectionChanged += ProfileManifestLoaderChanged;
+            _profileManifestLoaderHandlerAttached = true;
+        }
+
+        private void ProfileManifestLoaderChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (!_profileManifestBridgeReady || _profileManifestSyncing || _loaderBox?.SelectedItem == null)
+                return;
+
+            string loader = NormalizeLoader(_loaderBox.SelectedItem.ToString());
+            string currentVersion = GetSelectedVersion();
+            SetRuntimeVersionChoicesWithoutLosingManifest(loader, currentVersion);
+            UpdateRuntimeLabels(loader, GetSelectedVersion(), Math.Clamp((int)RamSlider.Value, 2, 12));
         }
 
         private static bool IsDescendantOf(DependencyObject child, DependencyObject ancestor)
@@ -220,6 +242,7 @@ namespace TopuLauncher
                 "Vanilla" => RuntimeVanillaVersions,
                 "Forge" => RuntimeForgeVersions,
                 "Quilt" => RuntimeQuiltVersions,
+                "NeoForge" => RuntimeNeoForgeVersions,
                 _ => RuntimeFabricVersions
             };
 
@@ -347,6 +370,7 @@ namespace TopuLauncher
             if (string.Equals(loader, "Fabric", StringComparison.OrdinalIgnoreCase)) return "Fabric";
             if (string.Equals(loader, "Forge", StringComparison.OrdinalIgnoreCase)) return "Forge";
             if (string.Equals(loader, "Quilt", StringComparison.OrdinalIgnoreCase)) return "Quilt";
+            if (string.Equals(loader, "NeoForge", StringComparison.OrdinalIgnoreCase)) return "NeoForge";
             return "Vanilla";
         }
 
