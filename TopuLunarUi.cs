@@ -112,7 +112,8 @@ namespace TopuLauncher
             wordmark.Children.Add(T("PERFORMANCE LAUNCHER", 8, "#00FF88", true));
             brand.Children.Add(wordmark); g.Children.Add(brand);
 
-            var right = new StackPanel { Grid.Column = 1, Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(right, 1);
             var account = new Border
             {
                 Background = B("#11161B"), BorderBrush = B("#252C33"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
@@ -186,7 +187,6 @@ namespace TopuLauncher
             var profile = T("default", 18, "#FFFFFF", true, new Thickness(0, 4, 0, 0));
             profile.SetBinding(TextBlock.TextProperty, new Binding("Text") { Source = LaunchProfileLabel }); launchStack.Children.Add(profile);
             launchStack.Children.Add(T("Selected version  •  Selected loader  •  Selected RAM", 8, "#AAB4AE", false, new Thickness(0, 3, 0, 12)));
-
             var launch = new Button { Height = 52, Content = "PLAY NOW  ›", Style = MakeButtonStyle("#00E87A", "#04120B", "#23FF94", 11) };
             launch.Click += (_, _) => LaunchBtn_Click(LaunchBtn, new RoutedEventArgs(Button.ClickEvent)); launchStack.Children.Add(launch);
             launchPanel.Child = launchStack; heroGrid.Children.Add(launchPanel); hero.Child = heroGrid; page.Children.Add(hero);
@@ -254,7 +254,7 @@ namespace TopuLauncher
             var s = new Style(typeof(Button));
             s.Setters.Add(new Setter(Control.BackgroundProperty, B(bg))); s.Setters.Add(new Setter(Control.ForegroundProperty, B(fg)));
             s.Setters.Add(new Setter(Control.BorderBrushProperty, B("#263039"))); s.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
-            s.Setters.Add(new Setter(Control.FontSizeProperty, size)); s.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold)); s.Setters.Add(new Setter(UIElement.CursorProperty, Cursors.Hand));
+            s.Setters.Add(new Setter(Control.FontSizeProperty, size)); s.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold)); s.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
             var template = new ControlTemplate(typeof(Button));
             var border = new FrameworkElementFactory(typeof(Border)); border.SetValue(Border.CornerRadiusProperty, new CornerRadius(9));
             border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
