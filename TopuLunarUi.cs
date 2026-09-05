@@ -48,7 +48,7 @@ namespace TopuLauncher
                 _lunarPages.Children.Add(PageScroller(TabProfiles)); _lunarPages.Children.Add(PageScroller(TabAccounts));
                 TabProfiles.Visibility = Visibility.Collapsed; TabAccounts.Visibility = Visibility.Collapsed;
 
-                var footer = new Border { Background = B("#07090B"), BorderBrush = B("#171C21"), BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 0) };
+                var footer = new Border { Background = B("#07090B"), BorderBrush = B("#171C21"), BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18) };
                 Grid.SetRow(footer, 2);
                 var fg = new Grid(); fg.Children.Add(T("TOPU CLIENT  •  PERFORMANCE EDITION", 8, "#626B75", true));
                 var ready = T("● READY", 8, "#00FF88", true); ready.HorizontalAlignment = HorizontalAlignment.Right; fg.Children.Add(ready);
