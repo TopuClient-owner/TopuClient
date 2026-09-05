@@ -13,6 +13,7 @@ namespace TopuLauncher
         {
             base.OnContentRendered(e);
             AddMaximizeButton();
+            InitializeTopuLunarUi();
         }
 
         private void AddMaximizeButton()
