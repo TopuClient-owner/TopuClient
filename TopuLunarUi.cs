@@ -14,12 +14,6 @@ namespace TopuLauncher
         private Grid? _lunarPages;
         private StackPanel? _lunarHome;
 
-        protected override void OnContentRendered(EventArgs e)
-        {
-            base.OnContentRendered(e);
-            InitializeTopuLunarUi();
-        }
-
         private void InitializeTopuLunarUi()
         {
             if (_lunarHost != null) return;
@@ -172,13 +166,15 @@ namespace TopuLauncher
                 Height = 205, Background = B("#0D1713"), BorderBrush = B("#205A3E"), BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(16), Padding = new Thickness(26), Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 0, Opacity = 0.25 }
             };
-            var hg = new Grid();
-            hg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            hg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(235) });
-            var copy = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            copy.Children.Add(T("TOPU PERFORMANCE EDITION", 9, "#00FF88", true));
-            copy.Children.Add(T("Maximum FPS.\nMinimum distraction.", 27, "#F4F7FA", true, new Thickness(0, 8, 0, 0)));
-            copy.Children.Add(T("A clean PvP-focused launcher built around your selected profile.", 10, "#81908A", false, new Thickness(0, 9, 0, 0))); hg.Children.Add(copy);
+            var heroGrid = new Grid();
+            heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(235) });
+
+            var heroText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            heroText.Children.Add(T("TOPU PERFORMANCE EDITION", 9, "#00FF88", true));
+            heroText.Children.Add(T("Maximum FPS.\nMinimum distraction.", 27, "#F4F7FA", true, new Thickness(0, 8, 0, 0)));
+            heroText.Children.Add(T("A clean PvP-focused launcher built around your selected profile.", 10, "#81908A", false, new Thickness(0, 9, 0, 0)));
+            heroGrid.Children.Add(heroText);
 
             var launchPanel = new Border
             {
@@ -190,9 +186,10 @@ namespace TopuLauncher
             var profile = T("default", 18, "#FFFFFF", true, new Thickness(0, 4, 0, 0));
             profile.SetBinding(TextBlock.TextProperty, new Binding("Text") { Source = LaunchProfileLabel }); launchStack.Children.Add(profile);
             launchStack.Children.Add(T("Selected version  •  Selected loader  •  Selected RAM", 8, "#AAB4AE", false, new Thickness(0, 3, 0, 12)));
+
             var launch = new Button { Height = 52, Content = "PLAY NOW  ›", Style = MakeButtonStyle("#00E87A", "#04120B", "#23FF94", 11) };
             launch.Click += (_, _) => LaunchBtn_Click(LaunchBtn, new RoutedEventArgs(Button.ClickEvent)); launchStack.Children.Add(launch);
-            launchPanel.Child = launchStack; hg.Children.Add(launchPanel); hero.Child = hg; page.Children.Add(hero);
+            launchPanel.Child = launchStack; heroGrid.Children.Add(launchPanel); hero.Child = heroGrid; page.Children.Add(hero);
 
             var detailsRow = new Grid { Margin = new Thickness(0, 16, 0, 0) };
             detailsRow.ColumnDefinitions.Add(new ColumnDefinition()); detailsRow.ColumnDefinitions.Add(new ColumnDefinition()); detailsRow.ColumnDefinitions.Add(new ColumnDefinition());
