@@ -34,7 +34,7 @@ namespace TopuLauncher
                 return;
 
             e.Handled = true;
-            _ = window.LaunchJava8ProfileAsync();
+            _ = window.LaunchJava8VanillaProfileAsync();
         }
     }
 }
