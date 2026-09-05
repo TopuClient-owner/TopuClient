@@ -28,28 +28,72 @@ namespace TopuLauncher
         private static object RegisterModrinthManagerHook()
         {
             EventManager.RegisterClassHandler(typeof(Button), Button.ClickEvent, new RoutedEventHandler(ModrinthManagerButtonClick), true);
+            EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent, new RoutedEventHandler(AddModrinthEntryButtons));
             return new object();
         }
 
         private static void ModrinthManagerButtonClick(object sender, RoutedEventArgs e)
         {
             if (e.OriginalSource is not Button button) return;
-            if (!string.Equals(button.Content?.ToString(), "Search & Add", StringComparison.OrdinalIgnoreCase)) return;
+            string content = button.Content?.ToString() ?? "";
+            if (!content.Equals("Search & Add", StringComparison.OrdinalIgnoreCase) &&
+                !content.Equals("Add Mods", StringComparison.OrdinalIgnoreCase) &&
+                !content.Equals("Add Modpacks", StringComparison.OrdinalIgnoreCase)) return;
             if (Window.GetWindow(button) is MainWindow window)
             {
                 e.Handled = true;
-                window.OpenModrinthManager();
+                window.OpenModrinthManager(content.Equals("Add Modpacks", StringComparison.OrdinalIgnoreCase) ? "Modpacks" : "Mods");
             }
         }
 
-        private void OpenModrinthManager()
+        private void OpenModrinthManager(string mode = "Mods")
         {
-            ModrinthBrowserWindow window = new ModrinthBrowserWindow(this)
+            ModrinthBrowserWindow window = new ModrinthBrowserWindow(this, mode)
             {
                 Owner = this,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
             window.ShowDialog();
+        }
+
+        private static void AddModrinthEntryButtons(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MainWindow window) return;
+
+            Button? original = FindButtonByText(window, "Search & Add");
+            if (original == null || original.Tag?.ToString() == "TopuModrinthEntries") return;
+
+            original.Content = "Add Mods";
+            original.Tag = "TopuModrinthEntries";
+
+            if (original.Parent is Panel parent)
+            {
+                int index = parent.Children.IndexOf(original);
+                Button modpacks = new Button
+                {
+                    Content = "Add Modpacks",
+                    Height = original.Height,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    Style = window.FindResource("ModernButton") as Style,
+                    Tag = "TopuModrinthEntries"
+                };
+                modpacks.Click += (_, args) => window.OpenModrinthManager("Modpacks");
+                parent.Children.Insert(Math.Min(index + 1, parent.Children.Count), modpacks);
+            }
+        }
+
+        private static Button? FindButtonByText(DependencyObject root, string text)
+        {
+            foreach (object child in LogicalTreeHelper.GetChildren(root))
+            {
+                if (child is Button button && string.Equals(button.Content?.ToString(), text, StringComparison.OrdinalIgnoreCase)) return button;
+                if (child is DependencyObject dependency)
+                {
+                    Button? found = FindButtonByText(dependency, text);
+                    if (found != null) return found;
+                }
+            }
+            return null;
         }
 
         private sealed class ModrinthProject
@@ -71,7 +115,7 @@ namespace TopuLauncher
             private readonly ComboBox _sort;
             private readonly TextBlock _status;
 
-            public ModrinthBrowserWindow(MainWindow launcher)
+            public ModrinthBrowserWindow(MainWindow launcher, string initialType = "Mods")
             {
                 _launcher = launcher;
                 Title = "Topu Client • Modrinth Manager";
@@ -120,7 +164,7 @@ namespace TopuLauncher
                 _type.Items.Add("Mods");
                 _type.Items.Add("Modpacks");
                 _type.Items.Add("All");
-                _type.SelectedIndex = 0;
+                _type.SelectedIndex = initialType.Equals("Modpacks", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
                 _type.Width = 105;
                 _type.Margin = new Thickness(0, 0, 8, 0);
                 Grid.SetColumn(_type, 1);

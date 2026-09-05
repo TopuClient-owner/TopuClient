@@ -37,6 +37,11 @@ namespace TopuLauncher
             "1.20.6", "1.21"
         };
 
+        private static readonly string[] RuntimeNeoForgeVersions =
+        {
+            "1.21.1", "1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2"
+        };
+
         private ComboBox? _loaderBox;
         private bool _runtimeUiReady;
 
@@ -83,6 +88,7 @@ namespace TopuLauncher
             _loaderBox.Items.Add("Fabric");
             _loaderBox.Items.Add("Forge");
             _loaderBox.Items.Add("Quilt");
+            _loaderBox.Items.Add("NeoForge");
             _loaderBox.SelectionChanged += LoaderBox_SelectionChanged;
 
             Border card = new Border
@@ -130,7 +136,7 @@ namespace TopuLauncher
         private void LaunchPreview(object sender, MouseButtonEventArgs e)
         {
             string loader = GetRuntimeProfile().Loader;
-            if (loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase)) return;
+            if (loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) || loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) return;
             e.Handled = true;
             _ = LaunchNonFabricProfileAsync();
         }
@@ -148,6 +154,7 @@ namespace TopuLauncher
                 "Vanilla" => RuntimeVanillaVersions,
                 "Forge" => RuntimeForgeVersions,
                 "Quilt" => RuntimeQuiltVersions,
+                "NeoForge" => RuntimeNeoForgeVersions,
                 _ => RuntimeFabricVersions
             };
             string current = preferred ?? GetSelectedVersion();
@@ -195,7 +202,7 @@ namespace TopuLauncher
             if (_loaderBox == null) return;
             RuntimeProfileSettings settings = GetRuntimeProfile();
             string loader = settings.Loader;
-            if (!loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Quilt", StringComparison.OrdinalIgnoreCase)) loader = "Vanilla";
+            if (!loader.Equals("Vanilla", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Forge", StringComparison.OrdinalIgnoreCase) && !loader.Equals("Quilt", StringComparison.OrdinalIgnoreCase) && !loader.Equals("NeoForge", StringComparison.OrdinalIgnoreCase)) loader = "Vanilla";
             _loaderBox.SelectedItem = loader;
             SetVersionChoices(loader, settings.Version);
             int ram = Math.Clamp(settings.RamGb, 2, 12);
@@ -211,7 +218,7 @@ namespace TopuLauncher
             for (int i = 0; i < 6; i++) root.RowDefinitions.Add(new RowDefinition { Height = i == 4 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
             TextBlock title = new TextBlock { Text = "Create New Profile", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = Brushes.White, Margin = new Thickness(0,0,0,18) }; Grid.SetRow(title,0); root.Children.Add(title);
             TextBox nameBox = new TextBox { Height = 36, Padding = new Thickness(10,6,10,6), Text = "pvp" }; AddDialogField(root,1,"Profile name",nameBox);
-            ComboBox loaderBox = new ComboBox { Height = 36, ItemsSource = new[] { "Vanilla", "Fabric", "Forge", "Quilt" }, SelectedIndex = 0 }; AddDialogField(root,2,"Loader",loaderBox);
+            ComboBox loaderBox = new ComboBox { Height = 36, ItemsSource = new[] { "Vanilla", "Fabric", "Forge", "Quilt", "NeoForge" }, SelectedIndex = 0 }; AddDialogField(root,2,"Loader",loaderBox);
             ComboBox versionBox = new ComboBox { Height = 36, ItemsSource = RuntimeVanillaVersions, SelectedIndex = 0 }; AddDialogField(root,3,"Minecraft version",versionBox);
             Slider ram = new Slider { Minimum = 2, Maximum = 12, Value = 4, TickFrequency = 1, IsSnapToTickEnabled = true };
             TextBlock ramValue = new TextBlock { Text = "4GB", Foreground = (Brush)FindResource("TopuGreen"), FontWeight = FontWeights.Bold, Margin = new Thickness(10,0,0,0) };
@@ -220,7 +227,7 @@ namespace TopuLauncher
             loaderBox.SelectionChanged += (_, _) =>
             {
                 string loader = loaderBox.SelectedItem?.ToString() ?? "Vanilla";
-                string[] choices = loader switch { "Vanilla" => RuntimeVanillaVersions, "Forge" => RuntimeForgeVersions, "Quilt" => RuntimeQuiltVersions, _ => RuntimeFabricVersions };
+                string[] choices = loader switch { "Vanilla" => RuntimeVanillaVersions, "Forge" => RuntimeForgeVersions, "Quilt" => RuntimeQuiltVersions, "NeoForge" => RuntimeNeoForgeVersions, _ => RuntimeFabricVersions };
                 versionBox.ItemsSource = choices; versionBox.SelectedIndex = 0;
             };
             StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
