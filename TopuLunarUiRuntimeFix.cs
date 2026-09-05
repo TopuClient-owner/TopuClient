@@ -11,18 +11,17 @@ namespace TopuLauncher
     {
         private static readonly object LunarRuntimeFixRegistration = RegisterLunarRuntimeFix();
         private Button? _lunarMaximizeButton;
-        private Grid? _lunarLaunchHost;
 
         private static object RegisterLunarRuntimeFix()
         {
             EventManager.RegisterClassHandler(
                 typeof(MainWindow),
                 FrameworkElement.LoadedEvent,
-                new RoutedEventHandler(OnLunarContentRendered));
+                new RoutedEventHandler(OnLunarLoaded));
             return new object();
         }
 
-        private static void OnLunarContentRendered(object sender, RoutedEventArgs e)
+        private static void OnLunarLoaded(object sender, RoutedEventArgs e)
         {
             if (sender is MainWindow window)
             {
@@ -36,7 +35,9 @@ namespace TopuLauncher
         {
             try
             {
-                KeepLaunchButtonInVisualTree();
+                // IMPORTANT: LaunchBtn is part of the real profile/launcher logic.
+                // Never move it into an invisible/non-hit-testable container.
+                // Doing so makes the button permanently unclickable.
                 WireLunarPlayButton();
                 AddLunarMaximizeButton();
             }
@@ -44,27 +45,6 @@ namespace TopuLauncher
             {
                 try { WriteException("LUNAR UI RUNTIME FIX ERROR", ex); } catch { }
             }
-        }
-
-        private void KeepLaunchButtonInVisualTree()
-        {
-            if (LaunchBtn == null || LaunchBtn.Parent != null)
-                return;
-
-            if (Content is not Border shell || shell.Child is not Grid grid)
-                return;
-
-            _lunarLaunchHost = new Grid
-            {
-                Width = 1,
-                Height = 1,
-                Opacity = 0,
-                IsHitTestVisible = false,
-                Visibility = Visibility.Visible
-            };
-
-            _lunarLaunchHost.Children.Add(LaunchBtn);
-            grid.Children.Add(_lunarLaunchHost);
         }
 
         private void WireLunarPlayButton()
@@ -77,13 +57,11 @@ namespace TopuLauncher
                 return;
 
             play.Tag = "TOPU_LUNAR_PLAY_WIRED";
-            play.PreviewMouseLeftButtonDown += LunarPlayNow_Click;
+            play.Click += LunarPlayNow_Click;
         }
 
-        private void LunarPlayNow_Click(object sender, MouseButtonEventArgs e)
+        private void LunarPlayNow_Click(object sender, RoutedEventArgs e)
         {
-            e.Handled = true;
-
             try
             {
                 if (LaunchBtn == null)
@@ -100,7 +78,7 @@ namespace TopuLauncher
                     return;
                 }
 
-                LaunchBtn_Click(LaunchBtn, new RoutedEventArgs(Button.ClickEvent));
+                LaunchBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }
             catch (Exception ex)
             {
@@ -136,17 +114,12 @@ namespace TopuLauncher
                 Height = 34,
                 Margin = new Thickness(2, 0, 0, 0),
                 ToolTip = "Maximize",
-                Style = FindButtonStyle(close)
+                Style = close.Style
             };
 
             _lunarMaximizeButton.Click += LunarMaximizeRestore_Click;
             int index = panel.Children.IndexOf(close);
             panel.Children.Insert(Math.Max(0, index), _lunarMaximizeButton);
-        }
-
-        private static Style? FindButtonStyle(Button source)
-        {
-            return source.Style;
         }
 
         private void LunarMaximizeRestore_Click(object sender, RoutedEventArgs e)
@@ -177,7 +150,8 @@ namespace TopuLauncher
             for (int i = 0; i < count; i++)
             {
                 DependencyObject child = VisualTreeHelper.GetChild(parent, i);
-                if (child is Button button && string.Equals(button.Content?.ToString(), content, StringComparison.Ordinal))
+                if (child is Button button &&
+                    string.Equals(button.Content?.ToString(), content, StringComparison.Ordinal))
                     return button;
 
                 Button? result = FindButtonByContent(child, content);
