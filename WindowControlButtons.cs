@@ -13,7 +13,6 @@ namespace TopuLauncher
         {
             base.OnContentRendered(e);
             AddMaximizeButton();
-            InitializeTopuLunarUi();
         }
 
         private void AddMaximizeButton()
@@ -34,7 +33,7 @@ namespace TopuLauncher
                 Foreground = new SolidColorBrush(Color.FromRgb(133, 138, 148)),
                 BorderThickness = new Thickness(0),
                 FontSize = 14,
-                ToolTip = "Maximize",
+                ToolTip = "Maximize"
             };
 
             _maximizeButton.Click += MaximizeRestore_Click;
