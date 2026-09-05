@@ -17,7 +17,7 @@ namespace TopuLauncher
         {
             EventManager.RegisterClassHandler(
                 typeof(MainWindow),
-                Window.ContentRenderedEvent,
+                FrameworkElement.ContentRenderedEvent,
                 new RoutedEventHandler(OnLunarContentRendered));
             return new object();
         }
